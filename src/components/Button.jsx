@@ -1,7 +1,7 @@
 function Button({ texto, onClick, disabled = false, ariaPressed, variant = "primary" }) {
   return (
     <button
-      className={`button button--${variant}`}
+      className={`button button--${variant}${disabled ? " button--disabled" : ""}`}
       type="button"
       onClick={onClick}
       disabled={disabled}

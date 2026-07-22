@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { ptBR } from "react-day-picker/locale";
+import { Link } from "react-router-dom";
 import "react-day-picker/style.css";
 import Button from "../components/Button";
 import ServiceCard from "../components/ServiceCard";
@@ -71,6 +72,13 @@ function Home() {
   const selectedDateObject = parseLocalDate(selectedDate);
   const formattedDate = selectedDateObject
     ? new Intl.DateTimeFormat("pt-BR").format(selectedDateObject)
+    : "";
+  const successFormattedDate = selectedDateObject
+    ? new Intl.DateTimeFormat("pt-BR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(selectedDateObject)
     : "";
 
   const handleDateSelect = (date) => {
@@ -233,6 +241,7 @@ function Home() {
           <span className="brand-mark" aria-hidden="true">B</span>
           <span>BarbershopStyle</span>
         </a>
+        <Link className="admin-link" to="/admin">Painel administrativo</Link>
       </header>
 
       <main id="main-content" className="home">
@@ -426,46 +435,58 @@ function Home() {
 
         {currentStep === "confirmation" && (
           <section className="confirmation-step" aria-labelledby="confirmation-title">
-            <div className="intro">
-              <p className="eyebrow">Agendamento · Etapa 5 de 5</p>
-              <h1 id="confirmation-title">
-                {isConfirmed ? "Agendamento confirmado" : "Confirme seu agendamento"}
-              </h1>
-              <p className="intro-text">
-                {isConfirmed ? "Seu horário foi reservado." : "Revise os dados antes de confirmar."}
-              </p>
-            </div>
-
-            <dl className="confirmation-card">
-              <div><dt>Serviço</dt><dd>{selectedService}</dd></div>
-              <div><dt>Data</dt><dd>{formattedDate}</dd></div>
-              <div><dt>Horário</dt><dd>{selectedTime}</dd></div>
-              <div><dt>Nome</dt><dd>{customerName}</dd></div>
-              <div><dt>Telefone</dt><dd>{customerPhone}</dd></div>
-            </dl>
-
             {isConfirmed ? (
-              <div className="confirmation-success" role="status">
-                <p>Agendamento confirmado com sucesso!</p>
-                <Button texto="Novo agendamento" onClick={resetAppointment} />
-              </div>
+              <article className="success-card" role="status">
+                <span className="success-icon" aria-hidden="true">✓</span>
+                <p className="eyebrow">Tudo certo</p>
+                <h1 id="confirmation-title">Agendamento confirmado!</h1>
+                <p className="success-message">
+                  Seu horário foi reservado com sucesso.
+                </p>
+
+                <dl className="success-summary">
+                  <div><dt>Nome</dt><dd>{customerName}</dd></div>
+                  <div><dt>Serviço</dt><dd>{selectedService}</dd></div>
+                  <div><dt>Data</dt><dd>{successFormattedDate}</dd></div>
+                  <div><dt>Horário</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Forma de pagamento</dt><dd>Pagamento no local</dd></div>
+                </dl>
+
+                <Button texto="Fazer novo agendamento" onClick={resetAppointment} />
+              </article>
             ) : (
-              <div className="confirmation-controls">
-                {submitError && (
-                  <p className="submit-error" role="alert" aria-live="assertive">
-                    {submitError}
-                  </p>
-                )}
-                <div className="date-actions">
-                  <Button texto="Voltar" variant="outline"
-                    onClick={() => setCurrentStep("customer")} />
-                  <Button
-                    texto={isSubmitting ? "Agendando..." : "Confirmar agendamento"}
-                    disabled={isSubmitting}
-                    onClick={handleConfirmAppointment}
-                  />
+              <>
+                <div className="intro">
+                  <p className="eyebrow">Agendamento · Etapa 5 de 5</p>
+                  <h1 id="confirmation-title">Confirme seu agendamento</h1>
+                  <p className="intro-text">Revise os dados antes de confirmar.</p>
                 </div>
-              </div>
+
+                <dl className="confirmation-card">
+                  <div><dt>Serviço</dt><dd>{selectedService}</dd></div>
+                  <div><dt>Data</dt><dd>{formattedDate}</dd></div>
+                  <div><dt>Horário</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Nome</dt><dd>{customerName}</dd></div>
+                  <div><dt>Telefone</dt><dd>{customerPhone}</dd></div>
+                </dl>
+
+                <div className="confirmation-controls">
+                  {submitError && (
+                    <p className="submit-error" role="alert" aria-live="assertive">
+                      {submitError}
+                    </p>
+                  )}
+                  <div className="date-actions">
+                    <Button texto="Voltar" variant="outline"
+                      onClick={() => setCurrentStep("customer")} />
+                    <Button
+                      texto={isSubmitting ? "Confirmando..." : "Confirmar agendamento"}
+                      disabled={isSubmitting}
+                      onClick={handleConfirmAppointment}
+                    />
+                  </div>
+                </div>
+              </>
             )}
           </section>
         )}

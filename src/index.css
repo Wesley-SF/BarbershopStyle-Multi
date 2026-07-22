@@ -145,6 +145,13 @@ h1 {
 .button--primary { min-width: 170px; color: #111; background: var(--gold); }
 .button--primary:hover:not(:disabled) { background: var(--gold-light); }
 .button:disabled { color: #716d66; background: #252527; cursor: not-allowed; opacity: .7; }
+.button--disabled {
+  border-color: #333033;
+  color: #716d66;
+  background: #252527;
+  cursor: not-allowed;
+  opacity: .7;
+}
 .selection-footer {
   display: flex;
   align-items: center;
@@ -434,24 +441,79 @@ h1 {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
-.confirmation-success {
-  margin-top: 2rem;
-  padding: clamp(1.5rem, 4vw, 2rem);
-  border: 1px solid var(--gold);
-  border-radius: 16px;
+.success-card {
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: clamp(1.75rem, 5vw, 3rem);
+  border: 1px solid rgba(212, 168, 79, .65);
+  border-radius: 20px;
   text-align: center;
-  background: rgba(212, 168, 79, .08);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(212, 168, 79, .14), transparent 15rem),
+    linear-gradient(145deg, var(--surface-raised), var(--surface));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .32);
 }
-.confirmation-success p {
-  margin-bottom: 1.25rem;
-  color: var(--gold-light);
-  font: 500 clamp(1.25rem, 3vw, 1.5rem) Georgia, serif;
+.success-icon {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 1.25rem;
+  place-items: center;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  color: #111;
+  background: var(--gold);
+  font-size: 2rem;
+  font-weight: 800;
+}
+.success-card h1 {
+  margin-bottom: .75rem;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+}
+.success-message {
+  margin-bottom: 2rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.success-summary {
+  margin: 0 0 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  background: rgba(0, 0, 0, .14);
+}
+.success-summary div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: .8rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.success-summary div:first-child { padding-top: 0; }
+.success-summary div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.success-summary dt { color: var(--muted); }
+.success-summary dd {
+  margin: 0;
+  color: #fffaf1;
+  font-weight: 700;
+  text-align: right;
 }
 
 @media (max-width: 540px) {
   .confirmation-card { grid-template-columns: 1fr; }
   .confirmation-card div:last-child { grid-column: auto; }
-  .confirmation-success .button { width: 100%; }
+  .success-card { padding-inline: 1.25rem; }
+  .success-summary div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .3rem;
+  }
+  .success-summary dd { text-align: left; }
+  .success-card .button { width: 100%; }
 }
 
 .confirmation-controls .date-actions { margin-top: 0; }
@@ -464,4 +526,142 @@ h1 {
   background: rgba(169, 74, 74, .12);
   font-size: .9rem;
   line-height: 1.5;
+}
+.site-header { justify-content: space-between; }
+.admin-link {
+  color: var(--gold-light);
+  font-size: .86rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.admin-link:hover { color: #fffaf1; }
+
+.admin-page {
+  width: min(1280px, calc(100% - 2.5rem));
+  margin: 0 auto;
+  padding: clamp(3rem, 7vw, 5rem) 0;
+}
+.admin-intro { margin-bottom: 2.5rem; }
+.admin-state {
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.admin-state--error {
+  border-color: #a94a4a;
+  color: #ffd6d6;
+  background: rgba(169, 74, 74, .12);
+}
+.appointments-list {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.appointments-header,
+.appointment-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.15fr .85fr .65fr .75fr;
+  gap: 1rem;
+  align-items: center;
+}
+.appointments-header {
+  padding: 1rem 1.25rem;
+  color: var(--gold-light);
+  background: #101011;
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.appointment-row {
+  padding: 1.15rem 1.25rem;
+  border-top: 1px solid var(--border);
+  color: #ece7df;
+  font-size: .9rem;
+}
+.appointment-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.status-badge {
+  display: inline-flex;
+  padding: .3rem .6rem;
+  border: 1px solid #5a4b2f;
+  border-radius: 999px;
+  color: var(--gold-light);
+  background: rgba(212, 168, 79, .08);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.status-badge--pending {
+  border-color: #7a622e;
+  color: #f0cf85;
+  background: rgba(212, 168, 79, .12);
+}
+.status-badge--confirmed {
+  border-color: #346b4a;
+  color: #91d6a9;
+  background: rgba(69, 153, 98, .12);
+}
+.status-badge--cancelled {
+  border-color: #843f3f;
+  color: #ffaaaa;
+  background: rgba(190, 66, 66, .12);
+}
+.status-badge--completed {
+  border-color: #456985;
+  color: #9cc9e8;
+  background: rgba(73, 126, 166, .12);
+}
+.status-badge--default {
+  border-color: #4a4845;
+  color: #c3beb7;
+  background: rgba(195, 190, 183, .08);
+}
+@media (max-width: 760px) {
+  .site-header { gap: 1rem; }
+  .admin-link { text-align: right; }
+  .appointments-list {
+    display: grid;
+    gap: 1rem;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+  .appointments-header { display: none; }
+  .appointment-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: .75rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: linear-gradient(145deg, var(--surface-raised), var(--surface));
+  }
+  .appointment-row > span {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    text-align: right;
+  }
+  .appointment-row > span::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-header .brand-mark { display: none; }
+  .admin-header .brand { font-size: 1rem; }
+  .admin-page { width: calc(100% - 2rem); }
 }
