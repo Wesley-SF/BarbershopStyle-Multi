@@ -5,7 +5,24 @@ import { Link } from "react-router-dom";
 import "react-day-picker/style.css";
 import Button from "../components/Button";
 import ServiceCard from "../components/ServiceCard";
+import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
+import {
+  SERVICES,
+  getIncludingService,
+  normalizeSelectedServices,
+} from "../config/services";
 import { supabase } from "../lib/supabase";
+import { formatDateBR } from "../utils/date";
+import { hasAllDayScheduleBlock } from "../utils/scheduleBlocks";
+import {
+  calculateEndTime,
+  calculateTotalDuration,
+  formatDuration,
+  generateAvailableSlots,
+  getBusinessHoursForDate,
+  isSameLocalDate,
+  isTimeAvailable,
+} from "../utils/time";
 
 function parseLocalDate(dateString) {
   if (!dateString) {
@@ -22,6 +39,18 @@ function formatLocalDate(date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function formatServicesList(selectedServices) {
+  if (selectedServices.length === 0) {
+    return "Nenhum";
+  }
+
+  if (selectedServices.length === 1) {
+    return selectedServices[0];
+  }
+
+  return `${selectedServices.slice(0, -1).join(", ")} e ${selectedServices.at(-1)}`;
 }
 
 const calendarLabels = {
@@ -47,7 +76,7 @@ const calendarLabels = {
 };
 
 function Home() {
-  const [selectedService, setSelectedService] = useState("");
+  const [selectedServices, setSelectedServices] = useState([]);
   const [currentStep, setCurrentStep] = useState("service");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
@@ -56,30 +85,37 @@ function Home() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [occupiedTimes, setOccupiedTimes] = useState([]);
+  const [appointmentsForDate, setAppointmentsForDate] = useState([]);
+  const [scheduleBlocksForDate, setScheduleBlocksForDate] = useState([]);
   const [isLoadingTimes, setIsLoadingTimes] = useState(false);
   const [timesError, setTimesError] = useState("");
-
-  const services = ["Corte", "Barba", "Corte + Barba", "Sobrancelha", "Pigmentação", "Luzes"];
-  const availableTimes = [
-    "08:00", "09:00", "10:00", "11:00", "13:00",
-    "14:00", "15:00", "16:00", "17:00", "18:00",
-  ];
+  const [availabilityNotice, setAvailabilityNotice] = useState("");
+  const [availabilityNow, setAvailabilityNow] = useState(() => new Date());
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const selectedDateObject = parseLocalDate(selectedDate);
-  const formattedDate = selectedDateObject
-    ? new Intl.DateTimeFormat("pt-BR").format(selectedDateObject)
+  const formattedDate = selectedDate ? formatDateBR(selectedDate) : "";
+  const selectedBusinessHours = getBusinessHoursForDate(selectedDate);
+  const selectedServicesText = formatServicesList(selectedServices);
+  const totalDuration = calculateTotalDuration(selectedServices);
+  const estimatedEndTime = selectedTime
+    ? calculateEndTime(selectedTime, totalDuration)
     : "";
-  const successFormattedDate = selectedDateObject
-    ? new Intl.DateTimeFormat("pt-BR", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(selectedDateObject)
-    : "";
+  const availableTimes = generateAvailableSlots(
+    selectedDate,
+    totalDuration,
+    appointmentsForDate,
+    scheduleBlocksForDate,
+    availabilityNow,
+  );
+  const isSelectedDateToday = isSameLocalDate(selectedDate, availabilityNow);
+  const isSelectedDateFullyBlocked = hasAllDayScheduleBlock(
+    scheduleBlocksForDate,
+  );
+  const customerDataIsValid =
+    customerName.trim().length >= 3 && customerPhone.length >= 10;
 
   const handleDateSelect = (date) => {
     if (!date) {
@@ -87,19 +123,43 @@ function Home() {
     }
 
     setSelectedDate(formatLocalDate(date));
+    setAvailabilityNow(new Date());
     setSelectedTime("");
+    setAvailabilityNotice("");
   };
 
-  const customerDataIsValid =
-    customerName.trim().length >= 3 && customerPhone.length >= 10;
+  const handleServiceToggle = (service) => {
+    if (getIncludingService(service, selectedServices)) return;
 
+    const nextServices = normalizeSelectedServices(
+      selectedServices.includes(service)
+        ? selectedServices.filter((currentService) => currentService !== service)
+        : [...selectedServices, service],
+    );
+    const nextDuration = calculateTotalDuration(nextServices);
+    const nextAvailableTimes = generateAvailableSlots(
+      selectedDate,
+      nextDuration,
+      appointmentsForDate,
+      scheduleBlocksForDate,
+      new Date(),
+    );
+
+    setSelectedServices(nextServices);
+    setAvailabilityNotice("");
+
+    if (selectedTime && !nextAvailableTimes.includes(selectedTime)) {
+      setSelectedTime("");
+    }
+  };
   useEffect(() => {
     let isCancelled = false;
 
     if (!selectedDate) {
       queueMicrotask(() => {
         if (!isCancelled) {
-          setOccupiedTimes([]);
+          setAppointmentsForDate([]);
+          setScheduleBlocksForDate([]);
           setSelectedTime("");
           setTimesError("");
           setIsLoadingTimes(false);
@@ -111,36 +171,57 @@ function Home() {
       };
     }
 
-    const fetchOccupiedTimes = async () => {
+    const fetchAppointmentsForDate = async () => {
       setIsLoadingTimes(true);
       setTimesError("");
 
       try {
-        const { data, error } = await supabase
-          .from("occupied_appointments")
-          .select("appointment_time")
-          .eq("appointment_date", selectedDate);
+        const [appointmentsResult, blocksResult] = await Promise.all([
+          supabase
+            .from("occupied_appointments")
+            .select("appointment_time, service, duration_minutes, status")
+            .eq("appointment_date", selectedDate),
+          supabase
+            .from("schedule_blocks")
+            .select("block_date, start_time, end_time, all_day")
+            .eq("block_date", selectedDate),
+        ]);
 
         if (isCancelled) {
           return;
         }
 
-        if (error) {
-          console.error("Erro ao consultar horários ocupados:", error);
-          setOccupiedTimes([]);
+        if (appointmentsResult.error || blocksResult.error) {
+          console.error("Erro ao consultar disponibilidade:", {
+            appointmentsError: appointmentsResult.error,
+            blocksError: blocksResult.error,
+          });
+          setAppointmentsForDate([]);
+          setScheduleBlocksForDate([]);
           setTimesError(
             "Não foi possível consultar os horários disponíveis.",
           );
           return;
         }
 
-        const normalizedTimes = (data ?? [])
-          .map(({ appointment_time }) => appointment_time?.slice(0, 5))
-          .filter(Boolean);
+        const appointments = appointmentsResult.data ?? [];
+        const scheduleBlocks = blocksResult.data ?? [];
+        const currentDateTime = new Date();
+        const refreshedAvailableTimes = generateAvailableSlots(
+          selectedDate,
+          totalDuration,
+          appointments,
+          scheduleBlocks,
+          currentDateTime,
+        );
 
-        setOccupiedTimes(normalizedTimes);
+        setAppointmentsForDate(appointments);
+        setScheduleBlocksForDate(scheduleBlocks);
+        setAvailabilityNow(currentDateTime);
         setSelectedTime((currentTime) =>
-          normalizedTimes.includes(currentTime) ? "" : currentTime,
+          currentTime && !refreshedAvailableTimes.includes(currentTime)
+            ? ""
+            : currentTime,
         );
       } catch (error) {
         if (isCancelled) {
@@ -148,7 +229,8 @@ function Home() {
         }
 
         console.error("Erro inesperado ao consultar horários:", error);
-        setOccupiedTimes([]);
+        setAppointmentsForDate([]);
+        setScheduleBlocksForDate([]);
         setTimesError(
           "Não foi possível consultar os horários disponíveis.",
         );
@@ -159,12 +241,52 @@ function Home() {
       }
     };
 
-    fetchOccupiedTimes();
+    fetchAppointmentsForDate();
 
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate]);
+  }, [selectedDate, totalDuration]);
+
+  useEffect(() => {
+    if (currentStep !== "time") {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      const currentDateTime = new Date();
+      const refreshedAvailableTimes = generateAvailableSlots(
+        selectedDate,
+        totalDuration,
+        appointmentsForDate,
+        scheduleBlocksForDate,
+        currentDateTime,
+      );
+
+      setAvailabilityNow(currentDateTime);
+
+      if (selectedTime && !refreshedAvailableTimes.includes(selectedTime)) {
+        setSelectedTime("");
+        setAvailabilityNotice(
+          "O horário selecionado não está mais disponível. Escolha outro.",
+        );
+      }
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    appointmentsForDate,
+    currentStep,
+    scheduleBlocksForDate,
+    selectedDate,
+    selectedTime,
+    totalDuration,
+  ]);
+
+  const handleOpenTimeStep = () => {
+    setAvailabilityNow(new Date());
+    setCurrentStep("time");
+  };
 
   const handleConfirmAppointment = async () => {
     if (isSubmitting) {
@@ -175,25 +297,85 @@ function Home() {
     setIsSubmitting(true);
 
     const normalizedPhone = customerPhone.replace(/\D/g, "");
+    const normalizedServices = normalizeSelectedServices(selectedServices);
+    const serviceNames = normalizedServices.join(", ");
+    const submissionDuration = calculateTotalDuration(normalizedServices);
+
+    setSelectedServices(normalizedServices);
 
     try {
+      const [appointmentsResult, blocksResult] = await Promise.all([
+        supabase
+          .from("occupied_appointments")
+          .select("appointment_time, service, duration_minutes, status")
+          .eq("appointment_date", selectedDate),
+        supabase
+          .from("schedule_blocks")
+          .select("block_date, start_time, end_time, all_day")
+          .eq("block_date", selectedDate),
+      ]);
+
+      if (appointmentsResult.error || blocksResult.error) {
+        console.error("Erro ao revalidar a disponibilidade:", {
+          appointmentsError: appointmentsResult.error,
+          blocksError: blocksResult.error,
+        });
+        setSubmitError(
+          "Não foi possível confirmar a disponibilidade. Tente novamente.",
+        );
+        return;
+      }
+
+      const appointments = appointmentsResult.data ?? [];
+      const scheduleBlocks = blocksResult.data ?? [];
+      const validationDateTime = new Date();
+      setAppointmentsForDate(appointments);
+      setScheduleBlocksForDate(scheduleBlocks);
+      setAvailabilityNow(validationDateTime);
+
+      if (
+        !isTimeAvailable(
+          selectedDate,
+          selectedTime,
+          submissionDuration,
+          appointments,
+          scheduleBlocks,
+          validationDateTime,
+        )
+      ) {
+        setSelectedTime("");
+        setAvailabilityNotice(
+          "Este horário não está mais disponível. Escolha outro horário.",
+        );
+        setCurrentStep("time");
+        return;
+      }
+
       const { error } = await supabase
         .from("appointments")
         .insert({
-          service: selectedService,
+          service: serviceNames,
           appointment_date: selectedDate,
           appointment_time: selectedTime,
+          duration_minutes: submissionDuration,
           customer_name: customerName.trim(),
           customer_phone: normalizedPhone,
         });
 
       if (error) {
-        console.error("Erro ao confirmar agendamento:", error);
+        console.error("Erro ao criar agendamento:", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+        });
 
         if (error.code === "23505") {
-          setSubmitError(
-            "Este horário acabou de ser reservado. Escolha outro horário.",
+          setSelectedTime("");
+          setAvailabilityNotice(
+            "Esse horário acabou de ser ocupado. Escolha outro horário.",
           );
+          setCurrentStep("time");
         } else {
           setSubmitError(
             "Não foi possível concluir o agendamento. Tente novamente.",
@@ -203,11 +385,15 @@ function Home() {
         return;
       }
 
-      setOccupiedTimes((currentTimes) =>
-        currentTimes.includes(selectedTime)
-          ? currentTimes
-          : [...currentTimes, selectedTime],
-      );
+      setAppointmentsForDate((currentAppointments) => [
+        ...currentAppointments,
+        {
+          appointment_time: selectedTime,
+          service: serviceNames,
+          duration_minutes: submissionDuration,
+          status: APPOINTMENT_STATUS.PENDING,
+        },
+      ]);
       setIsConfirmed(true);
     } catch (error) {
       console.error("Erro inesperado ao confirmar agendamento:", error);
@@ -220,7 +406,7 @@ function Home() {
   };
 
   const resetAppointment = () => {
-    setSelectedService("");
+    setSelectedServices([]);
     setCurrentStep("service");
     setSelectedDate("");
     setSelectedTime("");
@@ -229,15 +415,23 @@ function Home() {
     setIsConfirmed(false);
     setIsSubmitting(false);
     setSubmitError("");
-    setOccupiedTimes([]);
+    setAppointmentsForDate([]);
+    setScheduleBlocksForDate([]);
     setIsLoadingTimes(false);
     setTimesError("");
+    setAvailabilityNotice("");
+    setAvailabilityNow(new Date());
   };
 
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand notranslate" href="#main-content" aria-label="BarbershopStyle — início" translate="no">
+        <a
+          className="brand notranslate"
+          href="#main-content"
+          aria-label="BarbershopStyle — início"
+          translate="no"
+        >
           <span className="brand-mark" aria-hidden="true">B</span>
           <span>BarbershopStyle</span>
         </a>
@@ -249,28 +443,48 @@ function Home() {
           <section aria-labelledby="services-title">
             <div className="intro">
               <p className="eyebrow">Agendamento · Etapa 1 de 5</p>
-              <h1 id="services-title">Escolha seu serviço</h1>
+              <h1 id="services-title">Escolha seus serviços</h1>
               <p className="intro-text">
-                Selecione o cuidado ideal para você. Todos os serviços têm duração de 1 hora.
+                Selecione um ou mais procedimentos para calcular o tempo do atendimento.
               </p>
             </div>
             <div className="services-grid">
-              {services.map((service) => (
-                <ServiceCard
-                  key={service}
-                  nome={service}
-                  duracao="1 hora"
-                  isSelected={selectedService === service}
-                  onSelect={() => setSelectedService(service)}
-                />
-              ))}
+              {SERVICES.map((service) => {
+                const includingService = getIncludingService(
+                  service.name,
+                  selectedServices,
+                );
+
+                return (
+                  <ServiceCard
+                    key={service.name}
+                    nome={service.name}
+                    duracao={formatDuration(service.duration)}
+                    isSelected={selectedServices.includes(service.name)}
+                    isDisabled={Boolean(includingService)}
+                    disabledReason={
+                      includingService ? `Já incluído em ${includingService}` : ""
+                    }
+                    onSelect={() => handleServiceToggle(service.name)}
+                  />
+                );
+              })}
             </div>
             <div className="selection-footer" aria-live="polite">
-              <p className="selected-service">
-                Serviço selecionado: <strong>{selectedService || "Nenhum"}</strong>
-              </p>
-              <Button texto="Continuar" disabled={!selectedService}
-                onClick={() => setCurrentStep("date")} />
+              <div className="selected-service">
+                <p>Serviços selecionados: <strong>{selectedServicesText}</strong></p>
+                <p>
+                  {selectedServices.length} {selectedServices.length === 1
+                    ? "procedimento selecionado"
+                    : "procedimentos selecionados"}
+                </p>
+                <p>Tempo estimado: <strong>{formatDuration(totalDuration)}</strong></p>
+              </div>
+              <Button
+                texto="Continuar"
+                disabled={selectedServices.length === 0}
+                onClick={() => setCurrentStep("date")}
+              />
             </div>
           </section>
         )}
@@ -280,7 +494,7 @@ function Home() {
             <div className="intro">
               <p className="eyebrow">Agendamento · Etapa 2 de 5</p>
               <p className="step-service">
-                Serviço selecionado: <strong>{selectedService}</strong>
+                Serviços selecionados: <strong>{selectedServicesText}</strong>
               </p>
               <h1 id="date-title">Escolha uma data</h1>
               <p className="intro-text">Selecione o melhor dia para o seu atendimento.</p>
@@ -308,11 +522,15 @@ function Home() {
                   Data selecionada: <strong>{formattedDate}</strong>
                 </p>
               )}
+              {selectedBusinessHours && (
+                <p className="business-hours-note">
+                  Horário de atendimento neste dia: <strong>{selectedBusinessHours.start} às {selectedBusinessHours.end}</strong>
+                </p>
+              )}
             </div>
             <div className="date-actions">
               <Button texto="Voltar" variant="outline" onClick={() => setCurrentStep("service")} />
-              <Button texto="Continuar" disabled={!selectedDate}
-                onClick={() => setCurrentStep("time")} />
+              <Button texto="Continuar" disabled={!selectedDate} onClick={handleOpenTimeStep} />
             </div>
           </section>
         )}
@@ -322,8 +540,9 @@ function Home() {
             <div className="intro">
               <p className="eyebrow">Agendamento · Etapa 3 de 5</p>
               <div className="appointment-summary">
-                <p>Serviço: <strong>{selectedService}</strong></p>
+                <p>Serviços: <strong>{selectedServicesText}</strong></p>
                 <p>Data: <strong>{formattedDate}</strong></p>
+                <p>Duração estimada: <strong>{formatDuration(totalDuration)}</strong></p>
               </div>
               <h1 id="time-title">Escolha um horário</h1>
               <p className="intro-text">Selecione um dos horários disponíveis para o atendimento.</p>
@@ -340,44 +559,60 @@ function Home() {
                   {timesError}
                 </p>
               )}
+              {availabilityNotice && (
+                <p className="times-error" role="alert" aria-live="assertive">
+                  {availabilityNotice}
+                </p>
+              )}
+              {!isLoadingTimes && !timesError && isSelectedDateFullyBlocked && (
+                <p className="times-message">
+                  Não há atendimento disponível nesta data.
+                </p>
+              )}
+              {!isLoadingTimes &&
+                !timesError &&
+                !isSelectedDateFullyBlocked &&
+                isSelectedDateToday &&
+                availableTimes.length === 0 && (
+                  <p className="times-message">
+                    Não há mais horários disponíveis para hoje.
+                  </p>
+                )}
+              {!isLoadingTimes &&
+                !timesError &&
+                !isSelectedDateFullyBlocked &&
+                !isSelectedDateToday &&
+                availableTimes.length === 0 && (
+                  <p className="times-message">
+                    Nenhum horário disponível para esta duração.
+                  </p>
+                )}
               <div className="times-grid" role="group" aria-labelledby="time-options-label">
-                {availableTimes.map((time) => {
-                  const isOccupied = occupiedTimes.includes(time);
-                  const isUnavailable =
-                    isOccupied || isLoadingTimes || Boolean(timesError);
-
-                  return (
-                    <button
-                      key={time}
-                      className={`time-option${selectedTime === time ? " time-option--selected" : ""}${isOccupied ? " time-option--occupied" : ""}`}
-                      type="button"
-                      disabled={isUnavailable}
-                      aria-disabled={isUnavailable}
-                      aria-pressed={selectedTime === time}
-                      onClick={() => {
-                        if (!isOccupied) {
-                          setSelectedTime(time);
-                        }
-                      }}
-                    >
-                      <span>{time}</span>
-                      {isOccupied && <span className="time-status">Ocupado</span>}
-                    </button>
-                  );
-                })}
+                {availableTimes.map((time) => (
+                  <button
+                    key={time}
+                    className={`time-option${selectedTime === time ? " time-option--selected" : ""}`}
+                    type="button"
+                    disabled={isLoadingTimes || Boolean(timesError)}
+                    aria-disabled={isLoadingTimes || Boolean(timesError)}
+                    aria-pressed={selectedTime === time}
+                    onClick={() => {
+                      setSelectedTime(time);
+                      setAvailabilityNotice("");
+                    }}
+                  >
+                    <span>{time}</span>
+                  </button>
+                ))}
               </div>
             </div>
             <div className="date-actions">
               <Button texto="Voltar" variant="outline" onClick={() => setCurrentStep("date")} />
               <Button
                 texto="Continuar"
-                disabled={
-                  !selectedTime ||
-                  isLoadingTimes ||
-                  Boolean(timesError) ||
-                  occupiedTimes.includes(selectedTime)
-                }
-                onClick={() => setCurrentStep("customer")} />
+                disabled={!selectedTime || isLoadingTimes || Boolean(timesError)}
+                onClick={() => setCurrentStep("customer")}
+              />
             </div>
           </section>
         )}
@@ -387,9 +622,10 @@ function Home() {
             <div className="intro">
               <p className="eyebrow">Agendamento · Etapa 4 de 5</p>
               <div className="appointment-summary">
-                <p>Serviço: <strong>{selectedService}</strong></p>
+                <p>Serviços: <strong>{selectedServicesText}</strong></p>
                 <p>Data: <strong>{formattedDate}</strong></p>
-                <p>Horário: <strong>{selectedTime}</strong></p>
+                <p>Horário: <strong>{selectedTime} às {estimatedEndTime}</strong></p>
+                <p>Duração estimada: <strong>{formatDuration(totalDuration)}</strong></p>
               </div>
               <h1 id="customer-title">Seus dados</h1>
               <p className="intro-text">Informe seus dados para continuar o agendamento.</p>
@@ -426,9 +662,12 @@ function Home() {
               </div>
             </form>
             <div className="date-actions">
-              <Button texto="Voltar" variant="outline" onClick={() => setCurrentStep("time")} />
-              <Button texto="Continuar" disabled={!customerDataIsValid}
-                onClick={() => setCurrentStep("confirmation")} />
+              <Button texto="Voltar" variant="outline" onClick={handleOpenTimeStep} />
+              <Button
+                texto="Continuar"
+                disabled={!customerDataIsValid}
+                onClick={() => setCurrentStep("confirmation")}
+              />
             </div>
           </section>
         )}
@@ -440,18 +679,16 @@ function Home() {
                 <span className="success-icon" aria-hidden="true">✓</span>
                 <p className="eyebrow">Tudo certo</p>
                 <h1 id="confirmation-title">Agendamento confirmado!</h1>
-                <p className="success-message">
-                  Seu horário foi reservado com sucesso.
-                </p>
-
+                <p className="success-message">Seu horário foi reservado com sucesso.</p>
                 <dl className="success-summary">
                   <div><dt>Nome</dt><dd>{customerName}</dd></div>
-                  <div><dt>Serviço</dt><dd>{selectedService}</dd></div>
-                  <div><dt>Data</dt><dd>{successFormattedDate}</dd></div>
-                  <div><dt>Horário</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Serviços</dt><dd>{selectedServicesText}</dd></div>
+                  <div><dt>Data</dt><dd>{formattedDate}</dd></div>
+                  <div><dt>Horário inicial</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Término previsto</dt><dd>{estimatedEndTime}</dd></div>
+                  <div><dt>Duração estimada</dt><dd>{formatDuration(totalDuration)}</dd></div>
                   <div><dt>Forma de pagamento</dt><dd>Pagamento no local</dd></div>
                 </dl>
-
                 <Button texto="Fazer novo agendamento" onClick={resetAppointment} />
               </article>
             ) : (
@@ -461,15 +698,15 @@ function Home() {
                   <h1 id="confirmation-title">Confirme seu agendamento</h1>
                   <p className="intro-text">Revise os dados antes de confirmar.</p>
                 </div>
-
                 <dl className="confirmation-card">
-                  <div><dt>Serviço</dt><dd>{selectedService}</dd></div>
+                  <div><dt>Serviços</dt><dd>{selectedServicesText}</dd></div>
                   <div><dt>Data</dt><dd>{formattedDate}</dd></div>
-                  <div><dt>Horário</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Horário inicial</dt><dd>{selectedTime}</dd></div>
+                  <div><dt>Término previsto</dt><dd>{estimatedEndTime}</dd></div>
+                  <div><dt>Duração estimada</dt><dd>{formatDuration(totalDuration)}</dd></div>
                   <div><dt>Nome</dt><dd>{customerName}</dd></div>
                   <div><dt>Telefone</dt><dd>{customerPhone}</dd></div>
                 </dl>
-
                 <div className="confirmation-controls">
                   {submitError && (
                     <p className="submit-error" role="alert" aria-live="assertive">
@@ -477,8 +714,7 @@ function Home() {
                     </p>
                   )}
                   <div className="date-actions">
-                    <Button texto="Voltar" variant="outline"
-                      onClick={() => setCurrentStep("customer")} />
+                    <Button texto="Voltar" variant="outline" onClick={() => setCurrentStep("customer")} />
                     <Button
                       texto={isSubmitting ? "Confirmando..." : "Confirmar agendamento"}
                       disabled={isSubmitting}

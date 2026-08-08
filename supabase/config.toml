@@ -1,0 +1,2 @@
+[functions.send-admin-push]
+verify_jwt = false
