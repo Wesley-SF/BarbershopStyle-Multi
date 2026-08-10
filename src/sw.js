@@ -14,8 +14,8 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(self.registration.showNotification(payload.title || "Novo agendamento", {
     body: payload.body || "Um novo horário foi reservado.",
-    icon: "/favicon.png",
-    badge: "/favicon.png",
+    icon: "/favicon-kc.png",
+    badge: "/favicon-kc.png",
     data: { url: payload.url || "/admin" },
     tag: payload.tag || "new-appointment",
     renotify: true,
