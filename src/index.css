@@ -50,12 +50,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--gold-light); ou
 }
 
 .brand-logo-frame--home,
-.brand-logo-frame--admin {
-  width: 246.1px;
-}
-
+.brand-logo-frame--admin,
 .brand-logo-frame--login {
-  width: clamp(160px, 16vw, 190px);
+  width: 246.1px;
 }
 
 
@@ -748,7 +745,8 @@ h1 {
 
 @media (max-width: 900px) {
   .brand-logo-frame--home,
-  .brand-logo-frame--admin {
+  .brand-logo-frame--admin,
+  .brand-logo-frame--login {
     width: 192.6px;
   }
 }
@@ -756,10 +754,10 @@ h1 {
 @media (max-width: 480px) {
   .site-header { padding-block: .35rem; }
   .brand-logo-frame--home,
-  .brand-logo-frame--admin {
+  .brand-logo-frame--admin,
+  .brand-logo-frame--login {
     width: 160.5px;
   }
-  .brand-logo-frame--login { width: 150px; }
   .admin-header .brand { font-size: 1rem; }
   .admin-page { width: calc(100% - 2rem); }
 }
