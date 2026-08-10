@@ -3,6 +3,7 @@ import { DayPicker } from "react-day-picker";
 import { ptBR } from "react-day-picker/locale";
 import { Link } from "react-router-dom";
 import "react-day-picker/style.css";
+import Brand from "../components/Brand";
 import Button from "../components/Button";
 import ServiceCard from "../components/ServiceCard";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
@@ -429,11 +430,10 @@ function Home() {
         <a
           className="brand notranslate"
           href="#main-content"
-          aria-label="BarbershopStyle — início"
+          aria-label="Kallé Cortes — início"
           translate="no"
         >
-          <span className="brand-mark" aria-hidden="true">B</span>
-          <span>BarbershopStyle</span>
+          <Brand />
         </a>
         <Link className="admin-link" to="/admin">Painel administrativo</Link>
       </header>

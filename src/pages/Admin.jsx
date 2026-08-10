@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AdminDateFilter from "../components/AdminDateFilter";
+import Brand from "../components/Brand";
 import ScheduleBlockCard from "../components/ScheduleBlockCard";
 import ScheduleBlockForm from "../components/ScheduleBlockForm";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
@@ -18,6 +19,10 @@ import {
   getAppointmentEndDateTime,
   isAppointmentInProgress,
 } from "../utils/time";
+import {
+  createWhatsAppUrl,
+  isValidBrazilianWhatsAppPhone,
+} from "../utils/whatsapp";
 
 const statusPriority = {
   [APPOINTMENT_STATUS.PENDING]: 1,
@@ -128,6 +133,10 @@ function Admin() {
   const [logoutError, setLogoutError] = useState("");
   const [realtimeMessage, setRealtimeMessage] = useState("");
   const [highlightedAppointmentIds, setHighlightedAppointmentIds] = useState([]);
+  const [whatsAppError, setWhatsAppError] = useState({
+    appointmentId: null,
+    message: "",
+  });
 
   const highlightTimersRef = useRef(new Set());
   const messageTimerRef = useRef(null);
@@ -663,6 +672,30 @@ function Admin() {
     }
   };
 
+  const handleOpenWhatsApp = (appointment, messageType) => {
+    if (!isValidBrazilianWhatsAppPhone(appointment.customer_phone)) {
+      setWhatsAppError({
+        appointmentId: appointment.id,
+        message: "Telefone inválido para WhatsApp.",
+      });
+      return;
+    }
+
+    const formattedDate = formatDateBR(appointment.appointment_date);
+    const formattedTime = appointment.appointment_time.slice(0, 5);
+    const message =
+      messageType === "confirmation"
+        ? `Olá, ${appointment.customer_name}! Seu agendamento no Kallé Cortes foi confirmado.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nAguardamos você!`
+        : `Olá, ${appointment.customer_name}! Infelizmente não foi possível confirmar seu agendamento no Kallé Cortes.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nEntre em contato conosco para escolher outro horário.`;
+
+    setWhatsAppError({ appointmentId: null, message: "" });
+    window.open(
+      createWhatsAppUrl(appointment.customer_phone, message),
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
   const handleLogout = async () => {
     if (isSigningOut) {
       return;
@@ -692,9 +725,8 @@ function Admin() {
   return (
     <div className="app-shell admin-shell">
       <header className="site-header admin-header">
-        <Link className="brand notranslate" to="/" translate="no">
-          <span className="brand-mark" aria-hidden="true">B</span>
-          <span>BarbershopStyle</span>
+        <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
+          <Brand />
         </Link>
         <div className="admin-header-actions">
           <Link className="admin-link" to="/">Novo agendamento</Link>
@@ -934,28 +966,55 @@ function Admin() {
                         )}
                       </>
                     ) : appointment.status === APPOINTMENT_STATUS.CONFIRMED ? (
-                      <p
-                        className={`appointment-result ${
-                          isInProgress
-                            ? "appointment-result--in-progress"
-                            : "appointment-result--confirmed"
-                        }`}
-                      >
-                        {isInProgress
-                          ? "Atendimento em andamento"
-                          : "Agendamento confirmado"}
-                      </p>
+                      <>
+                        <p
+                          className={`appointment-result ${
+                            isInProgress
+                              ? "appointment-result--in-progress"
+                              : "appointment-result--confirmed"
+                          }`}
+                        >
+                          {isInProgress
+                            ? "Atendimento em andamento"
+                            : "Agendamento confirmado"}
+                        </p>
+                        {!isInProgress && (
+                          <button
+                            className="appointment-action appointment-action--whatsapp"
+                            type="button"
+                            onClick={() =>
+                              handleOpenWhatsApp(appointment, "confirmation")
+                            }
+                          >
+                            Enviar confirmação pelo WhatsApp
+                          </button>
+                        )}
+                      </>
                     ) : appointment.status === APPOINTMENT_STATUS.COMPLETED ? (
                       <p className="appointment-result appointment-result--completed">
                         Atendimento concluído
                       </p>
                     ) : appointment.status === APPOINTMENT_STATUS.CANCELLED ? (
-                      <p className="appointment-result appointment-result--cancelled">
-                        Agendamento recusado
-                      </p>
+                      <>
+                        <p className="appointment-result appointment-result--cancelled">
+                          Agendamento recusado
+                        </p>
+                        <button
+                          className="appointment-action appointment-action--whatsapp"
+                          type="button"
+                          onClick={() => handleOpenWhatsApp(appointment, "rejection")}
+                        >
+                          Enviar aviso pelo WhatsApp
+                        </button>
+                      </>
                     ) : (
                       <p className="appointment-result">
                         Status: {translateStatus(appointment.status)}
+                      </p>
+                    )}
+                    {whatsAppError.appointmentId === appointment.id && (
+                      <p className="appointment-whatsapp-error" role="alert">
+                        {whatsAppError.message}
                       </p>
                     )}
                   </div>

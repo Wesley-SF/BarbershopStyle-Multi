@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
 import Admin from "./pages/Admin";
@@ -5,6 +6,10 @@ import AdminLogin from "./pages/AdminLogin";
 import Home from "./pages/Home";
 
 function App() {
+  useEffect(() => {
+    document.title = "Kallé Cortes";
+  }, []);
+
   return (
     <Routes>
       <Route path="/" element={<Home />} />

@@ -41,6 +41,20 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--gold-light); ou
   letter-spacing: .02em;
   text-decoration: none;
 }
+.brand-logo {
+  display: block;
+  width: auto;
+  max-width: min(240px, 52vw);
+  height: 54px;
+  object-fit: contain;
+}
+
+.brand-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+}
+
 .brand-mark {
   display: grid;
   width: 38px;
@@ -726,6 +740,10 @@ h1 {
 }
 
 @media (max-width: 480px) {
+  .admin-header .brand-logo {
+    max-width: min(190px, 45vw);
+    height: 44px;
+  }
   .admin-header .brand-mark { display: none; }
   .admin-header .brand { font-size: 1rem; }
   .admin-page { width: calc(100% - 2rem); }
@@ -934,6 +952,22 @@ h1 {
   border-color: #914848;
   color: #ffe1e1;
   background: rgba(190, 66, 66, .18);
+}
+
+.appointment-action--whatsapp {
+  grid-column: 1 / -1;
+  margin-top: .25rem;
+  border-color: var(--gold);
+  color: #fff3cf;
+  background: rgba(212, 168, 79, .12);
+}
+
+.appointment-whatsapp-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ffaaaa;
+  font-size: .9rem;
+  text-align: center;
 }
 
 .appointment-action:disabled {

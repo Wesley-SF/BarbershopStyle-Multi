@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import Brand from "../components/Brand";
 import { supabase } from "../lib/supabase";
 
 function AdminLogin() {
@@ -43,9 +44,8 @@ function AdminLogin() {
   return (
     <div className="app-shell admin-login-shell">
       <header className="site-header">
-        <Link className="brand notranslate" to="/" translate="no">
-          <span className="brand-mark" aria-hidden="true">B</span>
-          <span>BarbershopStyle</span>
+        <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
+          <Brand />
         </Link>
       </header>
 

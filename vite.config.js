@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       injectRegister: false,
       manifest: {
-        name: "BarbershopStyle",
-        short_name: "BarbershopStyle",
-        description: "Agendamentos da BarbershopStyle",
+        name: "Kallé Cortes",
+        short_name: "Kallé Cortes",
+        description: "Agendamentos da Kallé Cortes",
         lang: "pt-BR",
         start_url: "/",
         scope: "/",
