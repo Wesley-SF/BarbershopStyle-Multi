@@ -21,7 +21,7 @@ export default defineConfig({
         display: "standalone",
         background_color: "#0b0b0c",
         theme_color: "#d4a84f",
-        icons: [{ src: "/pwa-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
+        icons: [{ src: "/favicon.png", sizes: "64x64", type: "image/png", purpose: "any" }],
       },
       injectManifest: { globPatterns: ["**/*.{js,css,html,svg,png,ico}"] },
     }),

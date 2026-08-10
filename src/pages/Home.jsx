@@ -433,7 +433,7 @@ function Home() {
           aria-label="Kallé Cortes — início"
           translate="no"
         >
-          <Brand />
+          <Brand variant="home" />
         </a>
         <Link className="admin-link" to="/admin">Painel administrativo</Link>
       </header>

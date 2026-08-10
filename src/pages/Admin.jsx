@@ -726,7 +726,7 @@ function Admin() {
     <div className="app-shell admin-shell">
       <header className="site-header admin-header">
         <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
-          <Brand />
+          <Brand variant="admin" />
         </Link>
         <div className="admin-header-actions">
           <Link className="admin-link" to="/">Novo agendamento</Link>

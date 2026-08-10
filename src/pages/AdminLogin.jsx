@@ -45,7 +45,7 @@ function AdminLogin() {
     <div className="app-shell admin-login-shell">
       <header className="site-header">
         <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
-          <Brand />
+          <Brand variant="login" />
         </Link>
       </header>
 
