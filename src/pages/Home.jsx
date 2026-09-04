@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { ptBR } from "react-day-picker/locale";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import "react-day-picker/style.css";
 import Brand from "../components/Brand";
 import Button from "../components/Button";
@@ -77,6 +77,10 @@ const calendarLabels = {
 };
 
 function Home() {
+  const { storeSlug } = useParams();
+  const [store, setStore] = useState(null);
+  const [isLoadingStore, setIsLoadingStore] = useState(true);
+  const [storeError, setStoreError] = useState("");
   const [selectedServices, setSelectedServices] = useState([]);
   const [currentStep, setCurrentStep] = useState("service");
   const [selectedDate, setSelectedDate] = useState("");
@@ -117,6 +121,42 @@ function Home() {
   );
   const customerDataIsValid =
     customerName.trim().length >= 3 && customerPhone.length >= 10;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchStore = async () => {
+      setIsLoadingStore(true);
+      setStoreError("");
+      setStore(null);
+
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id, name, slug, timezone")
+        .eq("slug", storeSlug)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (isCancelled) return;
+
+      if (error) {
+        console.error("Erro ao carregar loja:", error);
+        setStoreError("Não foi possível carregar esta loja.");
+      } else if (!data) {
+        setStoreError("Loja não encontrada ou indisponível.");
+      } else {
+        setStore(data);
+      }
+
+      setIsLoadingStore(false);
+    };
+
+    if (storeSlug) void fetchStore();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [storeSlug]);
 
   const handleDateSelect = (date) => {
     if (!date) {
@@ -172,6 +212,12 @@ function Home() {
       };
     }
 
+    if (!store?.id) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
     const fetchAppointmentsForDate = async () => {
       setIsLoadingTimes(true);
       setTimesError("");
@@ -181,10 +227,12 @@ function Home() {
           supabase
             .from("occupied_appointments")
             .select("appointment_time, service, duration_minutes, status")
+            .eq("store_id", store.id)
             .eq("appointment_date", selectedDate),
           supabase
-            .from("schedule_blocks")
+            .from("public_schedule_blocks")
             .select("block_date, start_time, end_time, all_day")
+            .eq("store_id", store.id)
             .eq("block_date", selectedDate),
         ]);
 
@@ -247,7 +295,7 @@ function Home() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate, totalDuration]);
+  }, [selectedDate, store?.id, totalDuration]);
 
   useEffect(() => {
     if (currentStep !== "time") {
@@ -309,10 +357,12 @@ function Home() {
         supabase
           .from("occupied_appointments")
           .select("appointment_time, service, duration_minutes, status")
+          .eq("store_id", store.id)
           .eq("appointment_date", selectedDate),
         supabase
-          .from("schedule_blocks")
+          .from("public_schedule_blocks")
           .select("block_date, start_time, end_time, all_day")
+          .eq("store_id", store.id)
           .eq("block_date", selectedDate),
       ]);
 
@@ -355,6 +405,8 @@ function Home() {
       const { error } = await supabase
         .from("appointments")
         .insert({
+          store_id: store.id,
+          status: APPOINTMENT_STATUS.PENDING,
           service: serviceNames,
           appointment_date: selectedDate,
           appointment_time: selectedTime,
@@ -423,6 +475,22 @@ function Home() {
     setAvailabilityNotice("");
     setAvailabilityNow(new Date());
   };
+
+  if (isLoadingStore) {
+    return (
+      <div className="auth-loading" role="status">
+        Carregando loja...
+      </div>
+    );
+  }
+
+  if (!store) {
+    return (
+      <div className="auth-loading" role="alert">
+        {storeError || "Loja indisponível."}
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">

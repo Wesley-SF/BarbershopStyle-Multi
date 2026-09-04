@@ -27,12 +27,13 @@ export async function createAdminPushSubscription(publicVapidKey) {
   });
 }
 
-export async function saveAdminPushSubscription(subscription, userId) {
+export async function saveAdminPushSubscription(subscription, userId, storeId) {
   const { endpoint, keys } = subscription.toJSON();
   if (!endpoint || !keys?.p256dh || !keys?.auth) throw new Error("A assinatura de notificações está incompleta.");
 
   const { error } = await supabase.from("push_subscriptions").upsert({
     user_id: userId,
+    store_id: storeId,
     role: "admin",
     endpoint,
     p256dh: keys.p256dh,
@@ -42,10 +43,14 @@ export async function saveAdminPushSubscription(subscription, userId) {
   if (error) throw error;
 }
 
-export async function removeAdminPushSubscription() {
+export async function removeAdminPushSubscription(storeId) {
   const subscription = await getCurrentPushSubscription();
   if (!subscription) return;
-  const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", subscription.endpoint);
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("endpoint", subscription.endpoint)
+    .eq("store_id", storeId);
   if (error) throw error;
   await subscription.unsubscribe();
 }

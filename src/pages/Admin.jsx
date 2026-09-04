@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import AdminDateFilter from "../components/AdminDateFilter";
 import Brand from "../components/Brand";
 import ScheduleBlockCard from "../components/ScheduleBlockCard";
@@ -105,6 +105,7 @@ function getStatusClass(status) {
 }
 
 function Admin() {
+  const { storeId } = useOutletContext();
   const [appointments, setAppointments] = useState([]);
   const [scheduleBlocks, setScheduleBlocks] = useState([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(true);
@@ -199,6 +200,7 @@ function Admin() {
         .from("appointments")
         .update({ status: APPOINTMENT_STATUS.COMPLETED })
         .eq("id", appointment.id)
+        .eq("store_id", storeId)
         .select("id, status");
 
       if (error) {
@@ -245,7 +247,7 @@ function Admin() {
     } finally {
       updatingIds.delete(appointment.id);
     }
-  }, []);
+  }, [storeId]);
 
   const completeFinishedAppointments = useCallback(async (appointmentsToCheck) => {
     const now = new Date();
@@ -284,6 +286,7 @@ function Admin() {
           .select(
             "id, customer_name, customer_phone, service, appointment_date, appointment_time, status, created_at, duration_minutes",
           )
+          .eq("store_id", storeId)
           .order("appointment_date", { ascending: true })
           .order("appointment_time", { ascending: true });
 
@@ -321,7 +324,7 @@ function Admin() {
     return () => {
       isCancelled = true;
     };
-  }, [completeFinishedAppointments]);
+  }, [completeFinishedAppointments, storeId]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -334,6 +337,7 @@ function Admin() {
         const { data, error } = await supabase
           .from("schedule_blocks")
           .select("id, block_date, start_time, end_time, all_day, reason, created_at")
+          .eq("store_id", storeId)
           .order("block_date", { ascending: true })
           .order("all_day", { ascending: false })
           .order("start_time", { ascending: true });
@@ -363,7 +367,7 @@ function Admin() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [storeId]);
 
   useEffect(() => {
     appointmentsRef.current = appointments;
@@ -374,7 +378,12 @@ function Admin() {
       .channel("admin-schedule-blocks")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "schedule_blocks" },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "schedule_blocks",
+          filter: `store_id=eq.${storeId}`,
+        },
         (payload) => {
           const newBlock = payload.new;
           setScheduleBlocks((currentBlocks) =>
@@ -386,7 +395,11 @@ function Admin() {
       )
       .on(
         "postgres_changes",
-        { event: "DELETE", schema: "public", table: "schedule_blocks" },
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "schedule_blocks",
+        },
         (payload) => {
           setScheduleBlocks((currentBlocks) =>
             currentBlocks.filter((scheduleBlock) => scheduleBlock.id !== payload.old.id),
@@ -398,7 +411,7 @@ function Admin() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [storeId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -421,6 +434,7 @@ function Admin() {
           event: "INSERT",
           schema: "public",
           table: "appointments",
+          filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
           const newAppointment = payload.new;
@@ -470,6 +484,7 @@ function Admin() {
           event: "UPDATE",
           schema: "public",
           table: "appointments",
+          filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
           const updatedAppointment = payload.new;
@@ -504,7 +519,7 @@ function Admin() {
         window.clearTimeout(messageTimerRef.current);
       }
     };
-  }, [completeFinishedAppointments]);
+  }, [completeFinishedAppointments, storeId]);
 
   const handleCreateScheduleBlock = async (newBlock) => {
     if (isSavingBlock) return false;
@@ -515,7 +530,7 @@ function Admin() {
     try {
       const { data, error } = await supabase
         .from("schedule_blocks")
-        .insert(newBlock)
+        .insert({ ...newBlock, store_id: storeId })
         .select("id, block_date, start_time, end_time, all_day, reason, created_at")
         .single();
 
@@ -566,6 +581,7 @@ function Admin() {
         .from("schedule_blocks")
         .delete()
         .eq("id", blockId)
+        .eq("store_id", storeId)
         .select("id");
 
       if (error || !data?.some((item) => item.id === blockId)) {
@@ -615,6 +631,7 @@ function Admin() {
         .from("appointments")
         .update({ status: newStatus })
         .eq("id", appointmentId)
+        .eq("store_id", storeId)
         .eq("status", APPOINTMENT_STATUS.PENDING)
         .select("id, status");
 
