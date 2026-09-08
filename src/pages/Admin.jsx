@@ -14,6 +14,7 @@ import {
   isSameAppointmentDate,
 } from "../utils/date";
 import { sortScheduleBlocks } from "../utils/scheduleBlocks";
+import { getStoreThemeStyle, normalizeStoreBranding } from "../utils/storeBranding";
 import {
   calculateEndTime,
   formatDuration,
@@ -108,6 +109,7 @@ function getStatusClass(status) {
 
 function Admin() {
   const { storeId } = useOutletContext();
+  const [storeBranding, setStoreBranding] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [scheduleBlocks, setScheduleBlocks] = useState([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(true);
@@ -146,6 +148,32 @@ function Admin() {
   const appointmentsRef = useRef([]);
   const completingAppointmentIdsRef = useRef(new Set());
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchStoreBranding = async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("name, slug, display_name, logo_url, primary_color, secondary_color, accent_color, phone, instagram, address")
+        .eq("id", storeId)
+        .single();
+
+      if (isCancelled) return;
+      if (error) {
+        console.error("Erro ao carregar identidade da loja:", error);
+      } else {
+        const branding = normalizeStoreBranding(data);
+        setStoreBranding(branding);
+        document.title = `${branding.display_name} | Admin`;
+      }
+    };
+
+    void fetchStoreBranding();
+    return () => {
+      isCancelled = true;
+    };
+  }, [storeId]);
 
   const agendaAppointments = sortAppointments(
     appointments.filter(
@@ -704,8 +732,8 @@ function Admin() {
     const formattedTime = appointment.appointment_time.slice(0, 5);
     const message =
       messageType === "confirmation"
-        ? `Olá, ${appointment.customer_name}! Seu agendamento no Kallé Cortes foi confirmado.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nAguardamos você!`
-        : `Olá, ${appointment.customer_name}! Infelizmente não foi possível confirmar seu agendamento no Kallé Cortes.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nEntre em contato conosco para escolher outro horário.`;
+        ? `Olá, ${appointment.customer_name}! Seu agendamento no ${storeBranding?.display_name ?? "estabelecimento"} foi confirmado.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nAguardamos você!`
+        : `Olá, ${appointment.customer_name}! Infelizmente não foi possível confirmar seu agendamento no ${storeBranding?.display_name ?? "estabelecimento"}.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nEntre em contato conosco para escolher outro horário.`;
 
     setWhatsAppError({ appointmentId: null, message: "" });
     window.open(
@@ -742,10 +770,10 @@ function Admin() {
   };
 
   return (
-    <div className="app-shell admin-shell">
+    <div className="app-shell admin-shell" style={getStoreThemeStyle(storeBranding)}>
       <header className="site-header admin-header">
-        <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
-          <Brand variant="admin" />
+        <Link className="brand notranslate" to={storeBranding?.slug ? `/${storeBranding.slug}` : "/"} aria-label={`${storeBranding?.display_name ?? "BarbershopStyle"} — início`} translate="no">
+          <Brand variant="admin" displayName={storeBranding?.display_name} logoUrl={storeBranding?.logo_url} />
         </Link>
         <div className="admin-header-actions">
           <Link className="admin-link" to="/">Novo agendamento</Link>

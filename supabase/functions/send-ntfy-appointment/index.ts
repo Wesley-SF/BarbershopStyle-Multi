@@ -79,7 +79,7 @@ Deno.serve(async (request) => {
       {
         method: "POST",
         headers: {
-          "Title": "Novo agendamento - Kallé Cortes",
+          "Title": "Novo agendamento",
           "Priority": "high",
           "Tags": "calendar,barber",
           "Content-Type": "text/plain; charset=utf-8",

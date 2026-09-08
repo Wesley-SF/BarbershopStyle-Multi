@@ -44,8 +44,8 @@ function AdminLogin() {
   return (
     <div className="app-shell admin-login-shell">
       <header className="site-header">
-        <Link className="brand notranslate" to="/" aria-label="Kallé Cortes — início" translate="no">
-          <Brand variant="login" />
+        <Link className="brand notranslate" to="/" aria-label="BarbershopStyle — início" translate="no">
+          <Brand variant="login" displayName="BarbershopStyle" />
         </Link>
       </header>
 

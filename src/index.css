@@ -7,6 +7,9 @@
   -webkit-font-smoothing: antialiased;
   --gold: #d4a84f;
   --gold-light: #f0cf85;
+  --color-primary: #d4a84f;
+  --color-secondary: #0b0b0c;
+  --color-accent: #f0cf85;
   --surface: #151516;
   --surface-raised: #1b1b1d;
   --border: #303033;
@@ -22,7 +25,12 @@ body {
 }
 button, a { font: inherit; }
 button:focus-visible, a:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 3px; }
-.app-shell { min-height: 100vh; }
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 32rem),
+    var(--color-secondary);
+}
 .site-header {
   display: flex;
   align-items: center;
@@ -45,7 +53,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--gold-light); ou
   position: relative;
   display: block;
   flex: 0 0 auto;
-  aspect-ratio: 1221 / 356;
+  min-height: 58px;
   overflow: hidden;
 }
 
@@ -57,13 +65,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--gold-light); ou
 
 
 .brand-logo {
-  position: absolute;
-  top: -122.2%;
-  left: -.9%;
   display: block;
-  width: 102.7%;
-  max-width: none;
-  height: auto;
+  width: 100%;
+  height: 58px;
   object-fit: contain;
   image-rendering: auto;
   background: transparent;
@@ -422,7 +426,8 @@ h1 {
   color: #fffaf1;
   font-weight: 700;
 }
-.form-field input {
+.form-field input,
+.form-field textarea {
   width: 100%;
   min-height: 52px;
   padding: .75rem 1rem;
@@ -432,7 +437,8 @@ h1 {
   background: #101011;
   font: inherit;
 }
-.form-field input:focus {
+.form-field input:focus,
+.form-field textarea:focus {
   border-color: var(--gold);
   outline: 3px solid rgba(212, 168, 79, .2);
 }
@@ -1046,6 +1052,16 @@ h1 {
   .appointment-card-actions { grid-template-columns: 1fr; }
   .appointment-action { min-height: 50px; }
 }
+.brand-logo-frame--text {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-width: 180px;
+}
+.brand-name {
+  color: var(--color-accent);
+  font: 700 clamp(1.25rem, 3vw, 1.8rem) Georgia, serif;
+}
 
 .admin-management-section {
   display: grid;
@@ -1167,6 +1183,29 @@ h1 {
   .admin-management-form,
   .store-rules-grid,
   .business-hours-row { grid-template-columns: 1fr; }
+}
+
+.store-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem clamp(1.25rem, 5vw, 4.5rem);
+  border-top: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.store-contact-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.store-contact a { color: var(--color-accent); }
+.store-contact address { color: var(--muted); font-style: normal; }
+
+@media (max-width: 800px) {
+  .store-contact { align-items: flex-start; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

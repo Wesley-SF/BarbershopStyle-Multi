@@ -15,6 +15,11 @@ import { supabase } from "../lib/supabase";
 import { formatDateBR } from "../utils/date";
 import { hasAllDayScheduleBlock } from "../utils/scheduleBlocks";
 import {
+  getInstagramUrl,
+  getStoreThemeStyle,
+  normalizeStoreBranding,
+} from "../utils/storeBranding";
+import {
   calculateEndTime,
   formatDuration,
   generateAvailableSlots,
@@ -159,7 +164,7 @@ function Home() {
 
       const { data, error } = await supabase
         .from("stores")
-        .select("id, name, slug, timezone, business_hours, slot_interval_minutes, minimum_booking_notice_minutes")
+        .select("id, name, slug, timezone, business_hours, slot_interval_minutes, minimum_booking_notice_minutes, display_name, logo_url, primary_color, secondary_color, accent_color, phone, instagram, address")
         .eq("slug", storeSlug)
         .eq("active", true)
         .maybeSingle();
@@ -172,8 +177,10 @@ function Home() {
       } else if (!data) {
         setStoreError("Loja não encontrada ou indisponível.");
       } else {
-        setStore(data);
+        const brandedStore = normalizeStoreBranding(data);
+        setStore(brandedStore);
         setAvailabilityNow(getDateTimeInTimeZone(data.timezone));
+        document.title = brandedStore.display_name;
       }
 
       setIsLoadingStore(false);
@@ -592,15 +599,15 @@ function Home() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={getStoreThemeStyle(store)}>
       <header className="site-header">
         <a
           className="brand notranslate"
           href="#main-content"
-          aria-label="Kallé Cortes — início"
+          aria-label={`${store.display_name} — início`}
           translate="no"
         >
-          <Brand variant="home" />
+          <Brand variant="home" displayName={store.display_name} logoUrl={store.logo_url} />
         </a>
         <Link className="admin-link" to="/admin">Painel administrativo</Link>
       </header>
@@ -913,6 +920,16 @@ function Home() {
           </section>
         )}
       </main>
+      {(store.phone || store.instagram || store.address) && (
+        <footer className="store-contact" aria-label="Informações da loja">
+          <strong>{store.display_name}</strong>
+          <div className="store-contact-links">
+            {store.phone && <a href={`tel:${store.phone.replace(/[^\d+]/g, "")}`}>{store.phone}</a>}
+            {store.instagram && <a href={getInstagramUrl(store.instagram)} target="_blank" rel="noreferrer">Instagram</a>}
+            {store.address && <address>{store.address}</address>}
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

@@ -7,15 +7,17 @@ import Home from "./pages/Home";
 
 function App() {
   useEffect(() => {
-    document.title = "Kallé Cortes";
+    document.title = "BarbershopStyle";
   }, []);
 
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/kalle-cortes" replace />} />
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route element={<ProtectedAdminRoute />}>
-        <Route path="/admin" element={<Admin />} />
+      <Route path="/admin">
+        <Route path="login" element={<AdminLogin />} />
+        <Route element={<ProtectedAdminRoute />}>
+          <Route index element={<Admin />} />
+        </Route>
       </Route>
       <Route path="/:storeSlug" element={<Home />} />
     </Routes>
