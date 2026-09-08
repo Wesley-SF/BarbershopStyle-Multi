@@ -15,7 +15,53 @@ const blockingStatuses = new Set([
 ]);
 const legacyCombinedServices = new Set(["Corte + Barba", "Corte+Barba"]);
 
-export function getBusinessHoursForDate(date) {
+function getBookingRules(bookingRules = {}) {
+  return {
+    businessHours: bookingRules.businessHours ?? BUSINESS_HOURS,
+    slotIntervalMinutes:
+      Number(bookingRules.slotIntervalMinutes) || BUSINESS_HOURS.slotInterval,
+    minimumBookingNoticeMinutes:
+      Number.isFinite(Number(bookingRules.minimumBookingNoticeMinutes))
+        ? Number(bookingRules.minimumBookingNoticeMinutes)
+        : MINIMUM_BOOKING_NOTICE_MINUTES,
+  };
+}
+
+export function getDateTimeInTimeZone(timeZone, date = new Date()) {
+  if (!timeZone) return new Date(date);
+
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(date)
+        .filter(({ type }) => type !== "literal")
+        .map(({ type, value }) => [type, value]),
+    );
+
+    return new Date(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+  } catch (error) {
+    console.error("Fuso horário inválido:", { timeZone, error });
+    return new Date(date);
+  }
+}
+
+export function getBusinessHoursForDate(date, bookingRules = {}) {
   let localDate;
 
   if (date instanceof Date) {
@@ -40,7 +86,7 @@ export function getBusinessHoursForDate(date) {
     return null;
   }
 
-  return BUSINESS_HOURS[localDate.getDay()] ?? null;
+  return getBookingRules(bookingRules).businessHours[localDate.getDay()] ?? null;
 }
 export function timeToMinutes(time) {
   const [hours, minutes] = time.slice(0, 5).split(":").map(Number);
@@ -74,14 +120,16 @@ export function roundUpToInterval(minutes, interval) {
 export function getMinimumBookingStartMinutes(
   dateString,
   currentDateTime = new Date(),
+  bookingRules = {},
 ) {
   if (!isSameLocalDate(dateString, currentDateTime)) {
     return null;
   }
 
+  const rules = getBookingRules(bookingRules);
   return roundUpToInterval(
-    getCurrentMinutes(currentDateTime) + MINIMUM_BOOKING_NOTICE_MINUTES,
-    BUSINESS_HOURS.slotInterval,
+    getCurrentMinutes(currentDateTime) + rules.minimumBookingNoticeMinutes,
+    rules.slotIntervalMinutes,
   );
 }
 
@@ -89,10 +137,12 @@ export function isSlotAllowedByCurrentTime(
   dateString,
   startTime,
   currentDateTime = new Date(),
+  bookingRules = {},
 ) {
   const minimumStart = getMinimumBookingStartMinutes(
     dateString,
     currentDateTime,
+    bookingRules,
   );
 
   return minimumStart === null || timeToMinutes(startTime) >= minimumStart;
@@ -268,8 +318,9 @@ export function isTimeAvailable(
   appointments,
   scheduleBlocks = [],
   currentDateTime = new Date(),
+  bookingRules = {},
 ) {
-  const businessHours = getBusinessHoursForDate(date);
+  const businessHours = getBusinessHoursForDate(date, bookingRules);
 
   if (!businessHours) {
     return false;
@@ -284,7 +335,7 @@ export function isTimeAvailable(
     return false;
   }
 
-  if (!isSlotAllowedByCurrentTime(date, startTime, currentDateTime)) {
+  if (!isSlotAllowedByCurrentTime(date, startTime, currentDateTime, bookingRules)) {
     return false;
   }
 
@@ -316,8 +367,9 @@ export function generateAvailableSlots(
   appointments = [],
   scheduleBlocks = [],
   currentDateTime = new Date(),
+  bookingRules = {},
 ) {
-  const businessHours = getBusinessHoursForDate(date);
+  const businessHours = getBusinessHoursForDate(date, bookingRules);
 
   if (!businessHours || !durationMinutes) {
     return [];
@@ -326,11 +378,12 @@ export function generateAvailableSlots(
   const opening = timeToMinutes(businessHours.start);
   const closing = timeToMinutes(businessHours.end);
   const slots = [];
+  const { slotIntervalMinutes } = getBookingRules(bookingRules);
 
   for (
     let slotStart = opening;
     slotStart + durationMinutes <= closing;
-    slotStart += BUSINESS_HOURS.slotInterval
+    slotStart += slotIntervalMinutes
   ) {
     const time = minutesToTime(slotStart);
 
@@ -342,6 +395,7 @@ export function generateAvailableSlots(
         appointments,
         scheduleBlocks,
         currentDateTime,
+        bookingRules,
       )
     ) {
       slots.push(time);

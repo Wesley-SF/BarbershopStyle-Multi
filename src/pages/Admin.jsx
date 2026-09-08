@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import AdminDateFilter from "../components/AdminDateFilter";
+import AdminServices from "../components/AdminServices";
 import Brand from "../components/Brand";
 import ScheduleBlockCard from "../components/ScheduleBlockCard";
 import ScheduleBlockForm from "../components/ScheduleBlockForm";
+import StoreOperationalSettings from "../components/StoreOperationalSettings";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
 import { supabase } from "../lib/supabase";
 import {
@@ -808,9 +810,31 @@ function Admin() {
           >
             Bloqueios ({scheduleBlocks.length})
           </button>
+          <button
+            className={`admin-tab${activeTab === "services" ? " admin-tab--active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "services"}
+            onClick={() => setActiveTab("services")}
+          >
+            Serviços
+          </button>
+          <button
+            className={`admin-tab${activeTab === "settings" ? " admin-tab--active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "settings"}
+            onClick={() => setActiveTab("settings")}
+          >
+            Configurações
+          </button>
         </div>
 
-        {activeTab === "blocks" ? (
+        {activeTab === "services" ? (
+          <AdminServices storeId={storeId} />
+        ) : activeTab === "settings" ? (
+          <StoreOperationalSettings storeId={storeId} />
+        ) : activeTab === "blocks" ? (
           <section className="schedule-blocks-section" aria-labelledby="schedule-blocks-title">
             <div className="schedule-blocks-heading">
               <div>
@@ -859,7 +883,7 @@ function Admin() {
           </section>
         ) : (
           <>
-        {activeDateFilter && (
+        {activeTab !== "agenda" && activeDateFilter && (
           <AdminDateFilter
             selectedDate={activeDateFilter}
             onDateChange={dateSetterByTab[activeTab]}

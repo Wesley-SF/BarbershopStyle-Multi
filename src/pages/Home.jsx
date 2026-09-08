@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { ptBR } from "react-day-picker/locale";
 import { Link, useParams } from "react-router-dom";
@@ -19,6 +19,7 @@ import {
   formatDuration,
   generateAvailableSlots,
   getBusinessHoursForDate,
+  getDateTimeInTimeZone,
   isSameLocalDate,
   isTimeAvailable,
 } from "../utils/time";
@@ -100,12 +101,24 @@ function Home() {
   const [availabilityNotice, setAvailabilityNotice] = useState("");
   const [availabilityNow, setAvailabilityNow] = useState(() => new Date());
 
-  const today = new Date();
+  const bookingRules = useMemo(
+    () => ({
+      businessHours: store?.business_hours ?? {},
+      slotIntervalMinutes: store?.slot_interval_minutes,
+      minimumBookingNoticeMinutes: store?.minimum_booking_notice_minutes,
+    }),
+    [store],
+  );
+  const getStoreNow = useCallback(
+    () => getDateTimeInTimeZone(store?.timezone),
+    [store],
+  );
+  const today = new Date(availabilityNow);
   today.setHours(0, 0, 0, 0);
 
   const selectedDateObject = parseLocalDate(selectedDate);
   const formattedDate = selectedDate ? formatDateBR(selectedDate) : "";
-  const selectedBusinessHours = getBusinessHoursForDate(selectedDate);
+  const selectedBusinessHours = getBusinessHoursForDate(selectedDate, bookingRules);
   const selectedServices = selectedServiceIds
     .map((serviceId) => services.find((service) => service.id === serviceId))
     .filter(Boolean);
@@ -124,6 +137,7 @@ function Home() {
     appointmentsForDate,
     scheduleBlocksForDate,
     availabilityNow,
+    bookingRules,
   );
   const isSelectedDateToday = isSameLocalDate(selectedDate, availabilityNow);
   const isSelectedDateFullyBlocked = hasAllDayScheduleBlock(
@@ -145,7 +159,7 @@ function Home() {
 
       const { data, error } = await supabase
         .from("stores")
-        .select("id, name, slug, timezone")
+        .select("id, name, slug, timezone, business_hours, slot_interval_minutes, minimum_booking_notice_minutes")
         .eq("slug", storeSlug)
         .eq("active", true)
         .maybeSingle();
@@ -159,6 +173,7 @@ function Home() {
         setStoreError("Loja não encontrada ou indisponível.");
       } else {
         setStore(data);
+        setAvailabilityNow(getDateTimeInTimeZone(data.timezone));
       }
 
       setIsLoadingStore(false);
@@ -211,7 +226,7 @@ function Home() {
     }
 
     setSelectedDate(formatLocalDate(date));
-    setAvailabilityNow(new Date());
+    setAvailabilityNow(getStoreNow());
     setSelectedTime("");
     setAvailabilityNotice("");
   };
@@ -239,7 +254,8 @@ function Home() {
       nextDuration,
       appointmentsForDate,
       scheduleBlocksForDate,
-      new Date(),
+      getStoreNow(),
+      bookingRules,
     );
 
     setSelectedServiceIds(nextServiceIds);
@@ -312,13 +328,14 @@ function Home() {
 
         const appointments = appointmentsResult.data ?? [];
         const scheduleBlocks = blocksResult.data ?? [];
-        const currentDateTime = new Date();
+        const currentDateTime = getStoreNow();
         const refreshedAvailableTimes = generateAvailableSlots(
           selectedDate,
           totalDuration,
           appointments,
           scheduleBlocks,
           currentDateTime,
+          bookingRules,
         );
 
         setAppointmentsForDate(appointments);
@@ -352,7 +369,13 @@ function Home() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate, store?.id, totalDuration]);
+  }, [
+    selectedDate,
+    store?.id,
+    bookingRules,
+    getStoreNow,
+    totalDuration,
+  ]);
 
   useEffect(() => {
     if (currentStep !== "time") {
@@ -360,13 +383,14 @@ function Home() {
     }
 
     const intervalId = window.setInterval(() => {
-      const currentDateTime = new Date();
+      const currentDateTime = getStoreNow();
       const refreshedAvailableTimes = generateAvailableSlots(
         selectedDate,
         totalDuration,
         appointmentsForDate,
         scheduleBlocksForDate,
         currentDateTime,
+        bookingRules,
       );
 
       setAvailabilityNow(currentDateTime);
@@ -386,11 +410,13 @@ function Home() {
     scheduleBlocksForDate,
     selectedDate,
     selectedTime,
+    bookingRules,
+    getStoreNow,
     totalDuration,
   ]);
 
   const handleOpenTimeStep = () => {
-    setAvailabilityNow(new Date());
+    setAvailabilityNow(getStoreNow());
     setCurrentStep("time");
   };
 
@@ -432,7 +458,7 @@ function Home() {
 
       const appointments = appointmentsResult.data ?? [];
       const scheduleBlocks = blocksResult.data ?? [];
-      const validationDateTime = new Date();
+      const validationDateTime = getStoreNow();
       setAppointmentsForDate(appointments);
       setScheduleBlocksForDate(scheduleBlocks);
       setAvailabilityNow(validationDateTime);
@@ -445,6 +471,7 @@ function Home() {
           appointments,
           scheduleBlocks,
           validationDateTime,
+          bookingRules,
         )
       ) {
         setSelectedTime("");
@@ -545,7 +572,7 @@ function Home() {
     setIsLoadingTimes(false);
     setTimesError("");
     setAvailabilityNotice("");
-    setAvailabilityNow(new Date());
+    setAvailabilityNow(getStoreNow());
   };
 
   if (isLoadingStore) {
