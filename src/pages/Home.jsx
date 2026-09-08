@@ -8,7 +8,6 @@ import Button from "../components/Button";
 import ServiceCard from "../components/ServiceCard";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
 import {
-  SERVICES,
   getIncludingService,
   normalizeSelectedServices,
 } from "../config/services";
@@ -17,7 +16,6 @@ import { formatDateBR } from "../utils/date";
 import { hasAllDayScheduleBlock } from "../utils/scheduleBlocks";
 import {
   calculateEndTime,
-  calculateTotalDuration,
   formatDuration,
   generateAvailableSlots,
   getBusinessHoursForDate,
@@ -81,7 +79,12 @@ function Home() {
   const [store, setStore] = useState(null);
   const [isLoadingStore, setIsLoadingStore] = useState(true);
   const [storeError, setStoreError] = useState("");
-  const [selectedServices, setSelectedServices] = useState([]);
+  const [services, setServices] = useState([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(true);
+  const [servicesError, setServicesError] = useState("");
+  const [servicesRefreshKey, setServicesRefreshKey] = useState(0);
+  const [serviceSelectionNotice, setServiceSelectionNotice] = useState("");
+  const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [currentStep, setCurrentStep] = useState("service");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
@@ -103,8 +106,15 @@ function Home() {
   const selectedDateObject = parseLocalDate(selectedDate);
   const formattedDate = selectedDate ? formatDateBR(selectedDate) : "";
   const selectedBusinessHours = getBusinessHoursForDate(selectedDate);
-  const selectedServicesText = formatServicesList(selectedServices);
-  const totalDuration = calculateTotalDuration(selectedServices);
+  const selectedServices = selectedServiceIds
+    .map((serviceId) => services.find((service) => service.id === serviceId))
+    .filter(Boolean);
+  const selectedServiceNames = selectedServices.map((service) => service.name);
+  const selectedServicesText = formatServicesList(selectedServiceNames);
+  const totalDuration = selectedServices.reduce(
+    (total, service) => total + service.duration_minutes,
+    0,
+  );
   const estimatedEndTime = selectedTime
     ? calculateEndTime(selectedTime, totalDuration)
     : "";
@@ -129,6 +139,9 @@ function Home() {
       setIsLoadingStore(true);
       setStoreError("");
       setStore(null);
+      setServices([]);
+      setSelectedServiceIds([]);
+      setServiceSelectionNotice("");
 
       const { data, error } = await supabase
         .from("stores")
@@ -158,6 +171,40 @@ function Home() {
     };
   }, [storeSlug]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchServices = async () => {
+      setIsLoadingServices(true);
+      setServicesError("");
+
+      const { data, error } = await supabase
+        .from("services")
+        .select("id, name, duration_minutes")
+        .eq("store_id", store.id)
+        .eq("active", true)
+        .order("created_at", { ascending: true });
+
+      if (isCancelled) return;
+
+      if (error) {
+        console.error("Erro ao carregar serviços:", error);
+        setServices([]);
+        setServicesError("Não foi possível carregar os serviços desta loja.");
+      } else {
+        setServices(data ?? []);
+      }
+
+      setIsLoadingServices(false);
+    };
+
+    if (store?.id) void fetchServices();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [servicesRefreshKey, store?.id]);
+
   const handleDateSelect = (date) => {
     if (!date) {
       return;
@@ -170,14 +217,23 @@ function Home() {
   };
 
   const handleServiceToggle = (service) => {
-    if (getIncludingService(service, selectedServices)) return;
+    if (getIncludingService(service.name, selectedServiceNames)) return;
 
-    const nextServices = normalizeSelectedServices(
-      selectedServices.includes(service)
-        ? selectedServices.filter((currentService) => currentService !== service)
-        : [...selectedServices, service],
+    const toggledServiceNames = selectedServiceIds.includes(service.id)
+      ? selectedServiceNames.filter((serviceName) => serviceName !== service.name)
+      : [...selectedServiceNames, service.name];
+    const normalizedServiceNames = normalizeSelectedServices(
+      toggledServiceNames,
     );
-    const nextDuration = calculateTotalDuration(nextServices);
+    const nextServiceIds = normalizedServiceNames
+      .map(
+        (serviceName) =>
+          services.find((availableService) => availableService.name === serviceName)?.id,
+      )
+      .filter(Boolean);
+    const nextDuration = services
+      .filter((availableService) => nextServiceIds.includes(availableService.id))
+      .reduce((total, availableService) => total + availableService.duration_minutes, 0);
     const nextAvailableTimes = generateAvailableSlots(
       selectedDate,
       nextDuration,
@@ -186,7 +242,8 @@ function Home() {
       new Date(),
     );
 
-    setSelectedServices(nextServices);
+    setSelectedServiceIds(nextServiceIds);
+    setServiceSelectionNotice("");
     setAvailabilityNotice("");
 
     if (selectedTime && !nextAvailableTimes.includes(selectedTime)) {
@@ -346,11 +403,7 @@ function Home() {
     setIsSubmitting(true);
 
     const normalizedPhone = customerPhone.replace(/\D/g, "");
-    const normalizedServices = normalizeSelectedServices(selectedServices);
-    const serviceNames = normalizedServices.join(", ");
-    const submissionDuration = calculateTotalDuration(normalizedServices);
-
-    setSelectedServices(normalizedServices);
+    const submissionDuration = totalDuration;
 
     try {
       const [appointmentsResult, blocksResult] = await Promise.all([
@@ -402,33 +455,46 @@ function Home() {
         return;
       }
 
-      const { error } = await supabase
-        .from("appointments")
-        .insert({
-          store_id: store.id,
-          status: APPOINTMENT_STATUS.PENDING,
-          service: serviceNames,
-          appointment_date: selectedDate,
-          appointment_time: selectedTime,
-          duration_minutes: submissionDuration,
-          customer_name: customerName.trim(),
-          customer_phone: normalizedPhone,
-        });
+      const { data, error } = await supabase.rpc("create_public_appointment", {
+        p_store_slug: store.slug,
+        p_service_ids: selectedServiceIds,
+        p_appointment_date: selectedDate,
+        p_appointment_time: selectedTime,
+        p_customer_name: customerName.trim(),
+        p_customer_phone: normalizedPhone,
+      });
 
       if (error) {
-        console.error("Erro ao criar agendamento:", {
+        console.error("Erro ao criar agendamento pela operação transacional:", {
           code: error?.code,
           message: error?.message,
           details: error?.details,
           hint: error?.hint,
         });
 
-        if (error.code === "23505") {
+        const databaseMessage = `${error?.message ?? ""} ${error?.details ?? ""}`;
+
+        if (
+          databaseMessage.includes("APPOINTMENT_CONFLICT") ||
+          databaseMessage.includes("APPOINTMENT_BLOCKED") ||
+          databaseMessage.includes("BOOKING_NOTICE_REQUIRED") ||
+          databaseMessage.includes("OUTSIDE_BUSINESS_HOURS") ||
+          databaseMessage.includes("STORE_CLOSED")
+        ) {
           setSelectedTime("");
           setAvailabilityNotice(
-            "Esse horário acabou de ser ocupado. Escolha outro horário.",
+            "Este horário não está mais disponível. Escolha outro horário.",
           );
           setCurrentStep("time");
+        } else if (databaseMessage.includes("INVALID_SERVICES")) {
+          setSelectedServiceIds([]);
+          setServiceSelectionNotice(
+            "Um dos serviços selecionados não está mais disponível. Escolha novamente.",
+          );
+          setServicesRefreshKey((currentKey) => currentKey + 1);
+          setCurrentStep("service");
+        } else if (databaseMessage.includes("STORE_NOT_FOUND")) {
+          setSubmitError("Esta loja não está disponível para agendamentos.");
         } else {
           setSubmitError(
             "Não foi possível concluir o agendamento. Tente novamente.",
@@ -438,13 +504,19 @@ function Home() {
         return;
       }
 
+      const createdAppointment = data?.[0];
+
       setAppointmentsForDate((currentAppointments) => [
         ...currentAppointments,
         {
-          appointment_time: selectedTime,
-          service: serviceNames,
-          duration_minutes: submissionDuration,
-          status: APPOINTMENT_STATUS.PENDING,
+          appointment_time:
+            createdAppointment?.appointment_time ?? selectedTime,
+          service:
+            createdAppointment?.service ?? selectedServicesText,
+          duration_minutes:
+            createdAppointment?.duration_minutes ?? submissionDuration,
+          status:
+            createdAppointment?.status ?? APPOINTMENT_STATUS.PENDING,
         },
       ]);
       setIsConfirmed(true);
@@ -459,7 +531,7 @@ function Home() {
   };
 
   const resetAppointment = () => {
-    setSelectedServices([]);
+    setSelectedServiceIds([]);
     setCurrentStep("service");
     setSelectedDate("");
     setSelectedTime("");
@@ -516,24 +588,39 @@ function Home() {
                 Selecione um ou mais procedimentos para calcular o tempo do atendimento.
               </p>
             </div>
+            {isLoadingServices && (
+              <p className="times-message" role="status">
+                Carregando serviços...
+              </p>
+            )}
+            {servicesError && (
+              <p className="times-error" role="alert">
+                {servicesError}
+              </p>
+            )}
+            {serviceSelectionNotice && (
+              <p className="times-error" role="alert">
+                {serviceSelectionNotice}
+              </p>
+            )}
             <div className="services-grid">
-              {SERVICES.map((service) => {
+              {services.map((service) => {
                 const includingService = getIncludingService(
                   service.name,
-                  selectedServices,
+                  selectedServiceNames,
                 );
 
                 return (
                   <ServiceCard
-                    key={service.name}
+                    key={service.id}
                     nome={service.name}
-                    duracao={formatDuration(service.duration)}
-                    isSelected={selectedServices.includes(service.name)}
+                    duracao={formatDuration(service.duration_minutes)}
+                    isSelected={selectedServiceIds.includes(service.id)}
                     isDisabled={Boolean(includingService)}
                     disabledReason={
                       includingService ? `Já incluído em ${includingService}` : ""
                     }
-                    onSelect={() => handleServiceToggle(service.name)}
+                    onSelect={() => handleServiceToggle(service)}
                   />
                 );
               })}
@@ -542,7 +629,7 @@ function Home() {
               <div className="selected-service">
                 <p>Serviços selecionados: <strong>{selectedServicesText}</strong></p>
                 <p>
-                  {selectedServices.length} {selectedServices.length === 1
+                  {selectedServiceIds.length} {selectedServiceIds.length === 1
                     ? "procedimento selecionado"
                     : "procedimentos selecionados"}
                 </p>
@@ -550,7 +637,11 @@ function Home() {
               </div>
               <Button
                 texto="Continuar"
-                disabled={selectedServices.length === 0}
+                disabled={
+                  selectedServiceIds.length === 0 ||
+                  isLoadingServices ||
+                  Boolean(servicesError)
+                }
                 onClick={() => setCurrentStep("date")}
               />
             </div>
