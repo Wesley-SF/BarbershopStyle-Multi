@@ -831,6 +831,17 @@ h1 {
   .admin-header-actions { gap: .75rem; }
 }
 
+@media (max-width: 600px) {
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .admin-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 /* Painel administrativo em cards */
 .admin-toolbar {
   display: flex;
@@ -1294,7 +1305,7 @@ h1 {
 }
 
 @media (max-width: 600px) {
-  .admin-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .admin-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .business-hours-note {
   margin: .65rem 0 0;

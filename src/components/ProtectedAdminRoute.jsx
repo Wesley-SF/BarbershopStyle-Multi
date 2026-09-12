@@ -76,7 +76,7 @@ function ProtectedAdminRoute() {
         console.error("Erro ao verificar sessão administrativa:", error);
       }
 
-      beginSessionTransition(data.session);
+      beginSessionTransition(data?.session ?? null);
     };
 
     loadSession();

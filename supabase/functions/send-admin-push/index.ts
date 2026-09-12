@@ -18,6 +18,9 @@ const formatDateBR = (date: string) => {
   return year && month && day ? `${day}/${month}/${year}` : date;
 };
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") return jsonResponse({ error: "Método não permitido." }, 405);
 
@@ -37,6 +40,14 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Evento inválido." }, 400);
     }
 
+    const appointment = payload.record;
+    if (
+      typeof appointment.store_id !== "string" ||
+      !uuidPattern.test(appointment.store_id)
+    ) {
+      return jsonResponse({ success: true, sent: 0, reason: "STORE_ID_INVALID" });
+    }
+
     const supabase = createClient(
       requiredEnv("SUPABASE_URL"),
       requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
@@ -51,11 +62,11 @@ Deno.serve(async (request) => {
     const { data: subscriptions, error: subscriptionsError } = await supabase
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
-      .eq("role", "admin");
+      .eq("role", "admin")
+      .eq("store_id", appointment.store_id);
 
     if (subscriptionsError) throw subscriptionsError;
 
-    const appointment = payload.record;
     const notification = JSON.stringify({
       title: "Novo agendamento",
       body: `${appointment.customer_name} — ${appointment.service}, ${formatDateBR(appointment.appointment_date)} às ${String(appointment.appointment_time).slice(0, 5)}`,
@@ -82,10 +93,14 @@ Deno.serve(async (request) => {
             const { error: deleteError } = await supabase
               .from("push_subscriptions")
               .delete()
-              .eq("id", subscription.id);
+              .eq("id", subscription.id)
+              .eq("store_id", appointment.store_id);
             if (deleteError) console.error("Erro ao remover assinatura expirada:", deleteError);
           } else {
-            console.error("Erro ao enviar Web Push:", { subscriptionId: subscription.id, statusCode, error });
+            console.error("Erro ao enviar Web Push:", {
+              subscriptionId: subscription.id,
+              statusCode,
+            });
           }
           return { id: subscription.id, sent: false, expired, statusCode };
         }
@@ -95,7 +110,7 @@ Deno.serve(async (request) => {
     const reports = results.map((result) =>
       result.status === "fulfilled"
         ? result.value
-        : { sent: false, expired: false, error: String(result.reason) },
+        : { sent: false, expired: false },
     );
 
     return jsonResponse({
@@ -103,7 +118,6 @@ Deno.serve(async (request) => {
       sent: reports.filter((item) => item.sent).length,
       failed: reports.filter((item) => !item.sent).length,
       removed: reports.filter((item) => item.expired).length,
-      reports,
     });
   } catch (error) {
     console.error("Erro na função send-admin-push:", error);

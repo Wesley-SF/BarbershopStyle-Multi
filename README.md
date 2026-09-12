@@ -20,9 +20,9 @@ VITE_VAPID_PUBLIC_KEY=SUA_CHAVE_PUBLICA
 
 Nunca coloque a chave privada em uma variável `VITE_`.
 
-### 2. Criar a tabela e as políticas
+### 2. Aplicar o schema versionado
 
-Execute o conteúdo de `supabase/push_subscriptions.sql` no SQL Editor do Supabase. As políticas permitem que usuários autenticados gerenciem somente suas próprias assinaturas com papel `admin`; o papel anônimo não recebe acesso.
+A tabela `push_subscriptions`, seus vínculos por `store_id` e as políticas multi-tenant fazem parte das migrations versionadas em `supabase/migrations`. Aplique somente as migrations pendentes, na ordem; não reaplique scripts SQL avulsos de versões anteriores.
 
 ### 3. Configurar e publicar a Edge Function
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">BarbershopStyle</title>
+  <rect width="512" height="512" rx="112" fill="#0b0b0c"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#d4a84f" stroke-width="24"/>
+  <path d="M168 144h103c62 0 99 28 99 76 0 29-15 51-42 64 36 12 55 38 55 75 0 57-43 89-119 89h-96V144Zm88 119c41 0 61-12 61-38s-20-37-61-37h-34v75h34Zm8 141c44 0 66-15 66-45 0-29-22-44-66-44h-42v89h42Z" fill="#f0cf85"/>
+</svg>

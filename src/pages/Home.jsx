@@ -7,10 +7,6 @@ import Brand from "../components/Brand";
 import Button from "../components/Button";
 import ServiceCard from "../components/ServiceCard";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
-import {
-  getIncludingService,
-  normalizeSelectedServices,
-} from "../config/services";
 import { supabase } from "../lib/supabase";
 import { formatDateBR } from "../utils/date";
 import { hasAllDayScheduleBlock } from "../utils/scheduleBlocks";
@@ -239,20 +235,9 @@ function Home() {
   };
 
   const handleServiceToggle = (service) => {
-    if (getIncludingService(service.name, selectedServiceNames)) return;
-
-    const toggledServiceNames = selectedServiceIds.includes(service.id)
-      ? selectedServiceNames.filter((serviceName) => serviceName !== service.name)
-      : [...selectedServiceNames, service.name];
-    const normalizedServiceNames = normalizeSelectedServices(
-      toggledServiceNames,
-    );
-    const nextServiceIds = normalizedServiceNames
-      .map(
-        (serviceName) =>
-          services.find((availableService) => availableService.name === serviceName)?.id,
-      )
-      .filter(Boolean);
+    const nextServiceIds = selectedServiceIds.includes(service.id)
+      ? selectedServiceIds.filter((serviceId) => serviceId !== service.id)
+      : [...selectedServiceIds, service.id];
     const nextDuration = services
       .filter((availableService) => nextServiceIds.includes(availableService.id))
       .reduce((total, availableService) => total + availableService.duration_minutes, 0);
@@ -639,21 +624,12 @@ function Home() {
             )}
             <div className="services-grid">
               {services.map((service) => {
-                const includingService = getIncludingService(
-                  service.name,
-                  selectedServiceNames,
-                );
-
                 return (
                   <ServiceCard
                     key={service.id}
                     nome={service.name}
                     duracao={formatDuration(service.duration_minutes)}
                     isSelected={selectedServiceIds.includes(service.id)}
-                    isDisabled={Boolean(includingService)}
-                    disabledReason={
-                      includingService ? `Já incluído em ${includingService}` : ""
-                    }
                     onSelect={() => handleServiceToggle(service)}
                   />
                 );

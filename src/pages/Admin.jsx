@@ -402,7 +402,7 @@ function Admin() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("admin-schedule-blocks")
+      .channel(`admin-schedule-blocks:${storeId}`)
       .on(
         "postgres_changes",
         {
@@ -426,6 +426,7 @@ function Admin() {
           event: "DELETE",
           schema: "public",
           table: "schedule_blocks",
+          filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
           setScheduleBlocks((currentBlocks) =>
@@ -454,7 +455,7 @@ function Admin() {
     const highlightTimers = highlightTimersRef.current;
 
     const channel = supabase
-      .channel("admin-new-appointments")
+      .channel(`admin-new-appointments:${storeId}`)
       .on(
         "postgres_changes",
         {
@@ -465,6 +466,7 @@ function Admin() {
         },
         (payload) => {
           const newAppointment = payload.new;
+          if (newAppointment.store_id !== storeId) return;
 
           setAppointments((currentAppointments) => {
             if (
@@ -515,6 +517,7 @@ function Admin() {
         },
         (payload) => {
           const updatedAppointment = payload.new;
+          if (updatedAppointment.store_id !== storeId) return;
 
           setAppointments((currentAppointments) => {
             const appointmentExists = currentAppointments.some(
