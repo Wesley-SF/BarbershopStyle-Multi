@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -7,30 +7,24 @@ function ProtectedAdminRoute() {
   const [profile, setProfile] = useState(null);
   const [accessError, setAccessError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const profileRequestVersionRef = useRef(0);
   const location = useLocation();
 
   useEffect(() => {
     let isCancelled = false;
+    const pendingTimers = new Set();
 
-    const loadProfile = async (nextSession) => {
-      if (!nextSession?.user) {
-        setSession(null);
-        setProfile(null);
-        setAccessError("");
-        setIsLoading(false);
-        return;
-      }
-
-      setSession(nextSession);
-      setIsLoading(true);
-
+    const loadProfile = async (nextSession, requestVersion) => {
       const { data, error } = await supabase
         .from("profiles")
         .select("user_id, store_id, role")
         .eq("user_id", nextSession.user.id)
         .maybeSingle();
 
-      if (isCancelled) {
+      if (
+        isCancelled ||
+        requestVersion !== profileRequestVersionRef.current
+      ) {
         return;
       }
 
@@ -49,16 +43,40 @@ function ProtectedAdminRoute() {
       setIsLoading(false);
     };
 
+    const beginSessionTransition = (nextSession) => {
+      const requestVersion = ++profileRequestVersionRef.current;
+
+      setSession(nextSession);
+      setProfile(null);
+      setAccessError("");
+
+      if (!nextSession?.user) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      const timerId = window.setTimeout(() => {
+        pendingTimers.delete(timerId);
+        if (!isCancelled) void loadProfile(nextSession, requestVersion);
+      }, 0);
+      pendingTimers.add(timerId);
+    };
+
     const loadSession = async () => {
+      const initialRequestVersion = profileRequestVersionRef.current;
       const { data, error } = await supabase.auth.getSession();
 
-      if (isCancelled) return;
+      if (
+        isCancelled ||
+        initialRequestVersion !== profileRequestVersionRef.current
+      ) return;
 
       if (error) {
         console.error("Erro ao verificar sessão administrativa:", error);
       }
 
-      await loadProfile(data.session);
+      beginSessionTransition(data.session);
     };
 
     loadSession();
@@ -67,14 +85,15 @@ function ProtectedAdminRoute() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isCancelled) {
-        window.setTimeout(() => {
-          if (!isCancelled) void loadProfile(nextSession);
-        }, 0);
+        beginSessionTransition(nextSession);
       }
     });
 
     return () => {
       isCancelled = true;
+      profileRequestVersionRef.current += 1;
+      pendingTimers.forEach((timerId) => window.clearTimeout(timerId));
+      pendingTimers.clear();
       subscription.unsubscribe();
     };
   }, []);
@@ -99,7 +118,12 @@ function ProtectedAdminRoute() {
     );
   }
 
-  return <Outlet context={{ profile, storeId: profile.store_id }} />;
+  return (
+    <Outlet
+      key={profile.store_id}
+      context={{ profile, storeId: profile.store_id }}
+    />
+  );
 }
 
 export default ProtectedAdminRoute;

@@ -1,2 +1,5 @@
 [functions.send-admin-push]
 verify_jwt = false
+
+[functions.send-ntfy-appointment]
+verify_jwt = false

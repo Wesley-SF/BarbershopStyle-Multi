@@ -125,7 +125,6 @@ function Admin() {
     message: "",
   });
   const [activeTab, setActiveTab] = useState("agenda");
-  const [agendaDateFilter, setAgendaDateFilter] = useState(getLocalToday);
   const [completedDateFilter, setCompletedDateFilter] = useState(getLocalToday);
   const [cancelledDateFilter, setCancelledDateFilter] = useState(getLocalToday);
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
@@ -180,7 +179,7 @@ function Admin() {
       (appointment) =>
         [APPOINTMENT_STATUS.PENDING, APPOINTMENT_STATUS.CONFIRMED].includes(
           appointment.status,
-        ) && isSameAppointmentDate(appointment, agendaDateFilter),
+        ),
     ),
     currentDateTime,
   );
@@ -209,12 +208,10 @@ function Admin() {
         ? cancelledAppointments
         : agendaAppointments;
   const dateFilterByTab = {
-    agenda: agendaDateFilter,
     completed: completedDateFilter,
     cancelled: cancelledDateFilter,
   };
   const dateSetterByTab = {
-    agenda: setAgendaDateFilter,
     completed: setCompletedDateFilter,
     cancelled: setCancelledDateFilter,
   };
