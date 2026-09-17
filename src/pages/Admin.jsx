@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import AdminDateFilter from "../components/AdminDateFilter";
+import AdminHeader from "../components/AdminHeader";
+import AdminSidebar from "../components/AdminSidebar";
 import AdminServices from "../components/AdminServices";
-import Brand from "../components/Brand";
+import AdminSummaryCards from "../components/AdminSummaryCards";
 import ScheduleBlockCard from "../components/ScheduleBlockCard";
 import ScheduleBlockForm from "../components/ScheduleBlockForm";
 import StoreOperationalSettings from "../components/StoreOperationalSettings";
@@ -125,6 +127,12 @@ function Admin() {
     message: "",
   });
   const [activeTab, setActiveTab] = useState("agenda");
+  const [adminTheme, setAdminTheme] = useState(() =>
+    window.localStorage.getItem("barbershopstyle-admin-theme") === "light"
+      ? "light"
+      : "dark",
+  );
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [completedDateFilter, setCompletedDateFilter] = useState(getLocalToday);
   const [cancelledDateFilter, setCancelledDateFilter] = useState(getLocalToday);
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
@@ -201,6 +209,16 @@ function Admin() {
   const pendingCount = agendaAppointments.filter(
     (appointment) => appointment.status === APPOINTMENT_STATUS.PENDING,
   ).length;
+  const summaryCounts = {
+    pending: pendingCount,
+    completed: appointments.filter(
+      (appointment) => appointment.status === APPOINTMENT_STATUS.COMPLETED,
+    ).length,
+    cancelled: appointments.filter(
+      (appointment) => appointment.status === APPOINTMENT_STATUS.CANCELLED,
+    ).length,
+    blocks: scheduleBlocks.length,
+  };
   const visibleAppointments =
     activeTab === "completed"
       ? completedAppointments
@@ -216,6 +234,14 @@ function Admin() {
     cancelled: setCancelledDateFilter,
   };
   const activeDateFilter = dateFilterByTab[activeTab];
+
+  const handleThemeToggle = () => {
+    setAdminTheme((currentTheme) => {
+      const nextTheme = currentTheme === "dark" ? "light" : "dark";
+      window.localStorage.setItem("barbershopstyle-admin-theme", nextTheme);
+      return nextTheme;
+    });
+  };
 
   const updateAppointmentToCompleted = useCallback(async (appointment) => {
     const updatingIds = completingAppointmentIdsRef.current;
@@ -770,23 +796,23 @@ function Admin() {
   };
 
   return (
-    <div className="app-shell admin-shell" style={getStoreThemeStyle(storeBranding)}>
-      <header className="site-header admin-header">
-        <Link className="brand notranslate" to={storeBranding?.slug ? `/${storeBranding.slug}` : "/"} aria-label={`${storeBranding?.display_name ?? "BarbershopStyle"} — início`} translate="no">
-          <Brand variant="admin" displayName={storeBranding?.display_name} logoUrl={storeBranding?.logo_url} />
-        </Link>
-        <div className="admin-header-actions">
-          <Link className="admin-link" to="/">Novo agendamento</Link>
-          <button
-            className="admin-link admin-logout"
-            type="button"
-            disabled={isSigningOut}
-            onClick={handleLogout}
-          >
-            {isSigningOut ? "Saindo..." : "Sair"}
-          </button>
-        </div>
-      </header>
+    <div className="admin-shell" data-admin-theme={adminTheme} style={getStoreThemeStyle(storeBranding)}>
+      <AdminSidebar
+        activeTab={activeTab}
+        isOpen={isSidebarOpen}
+        storeName={storeBranding?.display_name}
+        onClose={() => setIsSidebarOpen(false)}
+        onSelect={setActiveTab}
+      />
+      <div className="admin-dashboard">
+        <AdminHeader
+          bookingPath={storeBranding?.slug ? `/${storeBranding.slug}` : "/"}
+          isSigningOut={isSigningOut}
+          theme={adminTheme}
+          onLogout={handleLogout}
+          onMenuOpen={() => setIsSidebarOpen(true)}
+          onThemeToggle={handleThemeToggle}
+        />
 
       <main id="main-content" className="admin-page">
         {logoutError && (
@@ -796,67 +822,16 @@ function Admin() {
         )}
 
         <div className="admin-intro">
-          <p className="eyebrow">Administração</p>
+          <p className="eyebrow">Painel administrativo</p>
           <h1>Agendamentos</h1>
-          <p className="intro-text">Consulte os próximos atendimentos da barbearia.</p>
+          <p className="intro-text">Gerencie os agendamentos da sua barbearia de forma simples e rápida.</p>
+          <div className="admin-current-store">
+            <span>Barbearia</span>
+            <strong>{storeBranding?.display_name ?? "Carregando..."}</strong>
+          </div>
         </div>
 
-        <div className="admin-tabs" role="tablist" aria-label="Visualização dos agendamentos">
-          <button
-            className={`admin-tab${activeTab === "agenda" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "agenda"}
-            onClick={() => setActiveTab("agenda")}
-          >
-            Agenda ({agendaAppointments.length})
-          </button>
-          <button
-            className={`admin-tab${activeTab === "completed" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "completed"}
-            onClick={() => setActiveTab("completed")}
-          >
-            Concluídos ({completedAppointments.length})
-          </button>
-          <button
-            className={`admin-tab${activeTab === "cancelled" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "cancelled"}
-            onClick={() => setActiveTab("cancelled")}
-          >
-            Cancelados ({cancelledAppointments.length})
-          </button>
-          <button
-            className={`admin-tab${activeTab === "blocks" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "blocks"}
-            onClick={() => setActiveTab("blocks")}
-          >
-            Bloqueios ({scheduleBlocks.length})
-          </button>
-          <button
-            className={`admin-tab${activeTab === "services" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "services"}
-            onClick={() => setActiveTab("services")}
-          >
-            Serviços
-          </button>
-          <button
-            className={`admin-tab${activeTab === "settings" ? " admin-tab--active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "settings"}
-            onClick={() => setActiveTab("settings")}
-          >
-            Configurações
-          </button>
-        </div>
+        <AdminSummaryCards counts={summaryCounts} />
 
         {activeTab === "services" ? (
           <AdminServices storeId={storeId} />
@@ -917,9 +892,6 @@ function Admin() {
             onDateChange={dateSetterByTab[activeTab]}
           />
         )}
-        <section className="admin-toolbar" aria-label="Resumo da Agenda">
-          <strong>Agendamentos pendentes: {pendingCount}</strong>
-        </section>
         {realtimeMessage && (
           <p className="admin-realtime-notice" role="status" aria-live="polite">
             {realtimeMessage}
@@ -937,7 +909,8 @@ function Admin() {
         )}
 
         {!isLoading && !errorMessage && visibleAppointments.length === 0 && (
-          <p className="admin-state">
+          <div className="admin-state admin-empty-state">
+            <strong>
             {activeTab === "completed"
               ? "Não há atendimentos concluídos nesta data."
               : activeTab === "cancelled"
@@ -945,7 +918,11 @@ function Admin() {
                 : activeTab === "agenda"
                   ? "Não há agendamentos para esta data."
                   : "Nenhum agendamento encontrado."}
-          </p>
+            </strong>
+            {activeTab === "agenda" && (
+              <span>Quando houver novos agendamentos, eles aparecerão aqui.</span>
+            )}
+          </div>
         )}
 
         {statusUpdateError && (
@@ -1095,6 +1072,7 @@ function Admin() {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }
