@@ -1352,6 +1352,7 @@ h1 {
   font-weight: 700;
   text-align: left;
   cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, color .2s ease;
 }
 
 .admin-navigation-item:hover {
@@ -1359,22 +1360,28 @@ h1 {
   background: var(--admin-surface-secondary);
 }
 
+.admin-navigation-item:hover .admin-navigation-icon { transform: translateX(2px); }
+
 .admin-navigation-item--active {
   border-color: color-mix(in srgb, var(--admin-gold) 45%, transparent);
   color: var(--admin-gold-soft);
   background: color-mix(in srgb, var(--admin-gold) 12%, transparent);
 }
 
+.admin-navigation-item--active .admin-navigation-icon {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--admin-gold) 55%, transparent));
+}
+
 .admin-navigation-icon {
   display: grid;
   width: 28px;
   height: 28px;
-  border: 1px solid currentColor;
-  border-radius: 8px;
   flex: 0 0 auto;
   place-items: center;
-  font-size: .72rem;
+  transition: color .2s ease, filter .2s ease, transform .2s ease;
 }
+
+.admin-navigation-icon svg { width: 20px; height: 20px; }
 
 .admin-dashboard { min-width: 0; margin-left: 276px; }
 
