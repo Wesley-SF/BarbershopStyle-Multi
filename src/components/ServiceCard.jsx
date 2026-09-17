@@ -19,7 +19,7 @@ function ServiceCard({
         {isDisabled && <p className="service-included-note">{disabledReason}</p>}
       </div>
       <Button
-        texto={isDisabled ? "Já incluído" : isSelected ? "Selecionado" : "Selecionar"}
+        texto={isDisabled ? "Já incluído" : isSelected ? "✓ Selecionado" : "Selecionar"}
         onClick={onSelect}
         disabled={isDisabled}
         ariaPressed={isSelected}

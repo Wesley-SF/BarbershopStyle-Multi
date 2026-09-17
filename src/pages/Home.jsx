@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { ptBR } from "react-day-picker/locale";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import "react-day-picker/style.css";
-import Brand from "../components/Brand";
+import BookingProgress from "../components/BookingProgress";
 import Button from "../components/Button";
+import PublicBookingHeader from "../components/PublicBookingHeader";
 import ServiceCard from "../components/ServiceCard";
 import { APPOINTMENT_STATUS } from "../config/appointmentStatus";
 import { supabase } from "../lib/supabase";
@@ -101,6 +102,11 @@ function Home() {
   const [timesError, setTimesError] = useState("");
   const [availabilityNotice, setAvailabilityNotice] = useState("");
   const [availabilityNow, setAvailabilityNow] = useState(() => new Date());
+  const [bookingTheme, setBookingTheme] = useState(() =>
+    window.localStorage.getItem("barbershopstyle-public-theme") === "light"
+      ? "light"
+      : "dark",
+  );
 
   const bookingRules = useMemo(
     () => ({
@@ -567,6 +573,14 @@ function Home() {
     setAvailabilityNow(getStoreNow());
   };
 
+  const handleThemeToggle = () => {
+    setBookingTheme((currentTheme) => {
+      const nextTheme = currentTheme === "dark" ? "light" : "dark";
+      window.localStorage.setItem("barbershopstyle-public-theme", nextTheme);
+      return nextTheme;
+    });
+  };
+
   if (isLoadingStore) {
     return (
       <div className="auth-loading" role="status">
@@ -584,20 +598,16 @@ function Home() {
   }
 
   return (
-    <div className="app-shell" style={getStoreThemeStyle(store)}>
-      <header className="site-header">
-        <a
-          className="brand notranslate"
-          href="#main-content"
-          aria-label={`${store.display_name} — início`}
-          translate="no"
-        >
-          <Brand variant="home" displayName={store.display_name} logoUrl={store.logo_url} />
-        </a>
-        <Link className="admin-link" to="/admin">Painel administrativo</Link>
-      </header>
+    <div className="app-shell booking-shell" data-booking-theme={bookingTheme} style={getStoreThemeStyle(store)}>
+      <PublicBookingHeader
+        logoUrl={store.logo_url}
+        storeName={store.display_name}
+        theme={bookingTheme}
+        onThemeToggle={handleThemeToggle}
+      />
 
       <main id="main-content" className="home">
+        <BookingProgress currentStep={currentStep} />
         {currentStep === "service" && (
           <section aria-labelledby="services-title">
             <div className="intro">
