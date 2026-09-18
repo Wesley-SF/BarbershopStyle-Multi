@@ -1599,7 +1599,10 @@ h1 {
   .admin-new-booking { flex: 1; text-align: center; }
   .admin-user-chip { margin-left: auto; }
   .admin-page { padding: 1.25rem 1rem 2rem; }
-  .admin-intro { padding-right: 0; }
+  .admin-intro { margin-bottom: 1.25rem; padding-right: 0; }
+  .admin-intro h1 { margin-bottom: .35rem; font-size: clamp(1.8rem, 10vw, 2.5rem); }
+  .admin-intro .eyebrow { margin-bottom: .45rem; }
+  .admin-intro .intro-text { font-size: .95rem; line-height: 1.5; }
   .admin-current-store { position: static; width: 100%; margin-top: 1rem; }
 }
 
