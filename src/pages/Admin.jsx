@@ -101,33 +101,6 @@ const statusLabels = {
   [APPOINTMENT_STATUS.COMPLETED]: "Concluído",
 };
 
-const adminSectionContent = {
-  agenda: {
-    title: "Agendamentos",
-    description: "Gerencie os próximos atendimentos da sua barbearia.",
-  },
-  completed: {
-    title: "Concluídos",
-    description: "Consulte os atendimentos já finalizados.",
-  },
-  cancelled: {
-    title: "Cancelados",
-    description: "Consulte os agendamentos cancelados.",
-  },
-  blocks: {
-    title: "Bloqueios",
-    description: "Gerencie dias e horários indisponíveis.",
-  },
-  services: {
-    title: "Serviços",
-    description: "Gerencie os serviços oferecidos pela barbearia.",
-  },
-  settings: {
-    title: "Configurações",
-    description: "Configure os horários e o funcionamento da sua loja.",
-  },
-};
-
 function translateStatus(status) {
   return statusLabels[status] ?? status ?? "—";
 }
@@ -261,7 +234,6 @@ function Admin() {
     cancelled: setCancelledDateFilter,
   };
   const activeDateFilter = dateFilterByTab[activeTab];
-  const activeSectionContent = adminSectionContent[activeTab];
 
   const handleThemeToggle = () => {
     setAdminTheme((currentTheme) => {
@@ -849,17 +821,21 @@ function Admin() {
           </p>
         )}
 
-        <div className="admin-intro">
-          <p className="eyebrow">Painel administrativo</p>
-          <h1>{activeSectionContent.title}</h1>
-          <p className="intro-text">{activeSectionContent.description}</p>
-          <div className="admin-current-store">
-            <span>Barbearia</span>
-            <strong>{storeBranding?.display_name ?? "Carregando..."}</strong>
-          </div>
-        </div>
+        {activeTab === "agenda" && (
+          <>
+            <div className="admin-intro">
+              <p className="eyebrow">Painel administrativo</p>
+              <h1>Agendamentos</h1>
+              <p className="intro-text">Gerencie os próximos atendimentos da sua barbearia.</p>
+              <div className="admin-current-store">
+                <span>Barbearia</span>
+                <strong>{storeBranding?.display_name ?? "Carregando..."}</strong>
+              </div>
+            </div>
 
-        <AdminSummaryCards counts={summaryCounts} />
+            <AdminSummaryCards counts={summaryCounts} />
+          </>
+        )}
 
         {activeTab === "services" ? (
           <AdminServices storeId={storeId} />
