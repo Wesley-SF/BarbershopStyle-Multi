@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import AdminPwaInstall from "./AdminPwaInstall";
 
 const days = [
   { key: "1", label: "Segunda-feira" },
@@ -219,6 +220,7 @@ function StoreOperationalSettings({ storeId }) {
           {isSaving ? "Salvando..." : "Salvar configurações"}
         </button>
       </form>
+      <AdminPwaInstall />
     </section>
   );
 }

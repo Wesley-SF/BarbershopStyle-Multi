@@ -1955,6 +1955,28 @@ h1 {
   .booking-store-logo { width: 64px; height: 64px; }
   .booking-progress-step > span:last-child { font-size: .57rem; }
 }
+
+.admin-pwa-install {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  color: var(--admin-text);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.admin-pwa-install h2 { margin-bottom: .45rem; }
+.admin-pwa-install p:last-child { margin-bottom: 0; color: var(--admin-text-muted); }
+.admin-pwa-install-button { grid-column: auto; flex: 0 0 auto; }
+
+@media (max-width: 600px) {
+  .admin-pwa-install { align-items: stretch; flex-direction: column; }
+  .admin-pwa-install-button { width: 100%; }
+}
 .admin-tabs {
   display: flex;
   gap: .65rem;
