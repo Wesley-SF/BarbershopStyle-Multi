@@ -17,6 +17,7 @@ import {
 } from "../utils/date";
 import { sortScheduleBlocks } from "../utils/scheduleBlocks";
 import { getStoreThemeStyle, normalizeStoreBranding } from "../utils/storeBranding";
+import { removeAdminPushSubscription } from "../utils/pushNotifications";
 import {
   calculateEndTime,
   formatDuration,
@@ -125,7 +126,7 @@ function buildWhatsAppMessage(appointment, storeName) {
 }
 
 function Admin() {
-  const { storeId } = useOutletContext();
+  const { profile, storeId } = useOutletContext();
   const [storeBranding, setStoreBranding] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [scheduleBlocks, setScheduleBlocks] = useState([]);
@@ -821,6 +822,12 @@ function Admin() {
     setLogoutError("");
 
     try {
+      try {
+        await removeAdminPushSubscription(profile.user_id, storeId);
+      } catch (pushError) {
+        console.error("Não foi possível remover as notificações deste aparelho durante o logout:", pushError);
+      }
+
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -883,7 +890,7 @@ function Admin() {
         {activeTab === "services" ? (
           <AdminServices storeId={storeId} />
         ) : activeTab === "settings" ? (
-          <StoreOperationalSettings storeId={storeId} />
+          <StoreOperationalSettings storeId={storeId} userId={profile.user_id} />
         ) : activeTab === "blocks" ? (
           <section className="schedule-blocks-section" aria-labelledby="schedule-blocks-title">
             <div className="schedule-blocks-heading">

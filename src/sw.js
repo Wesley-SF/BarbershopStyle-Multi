@@ -29,7 +29,10 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || "/admin", self.location.origin).href;
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-    const existingClient = clients.find((client) => client.url.startsWith(self.location.origin));
+    const existingClient = clients.find((client) => {
+      const clientUrl = new URL(client.url);
+      return clientUrl.origin === self.location.origin && clientUrl.pathname.startsWith("/admin");
+    });
     if (existingClient) return existingClient.navigate(targetUrl).then(() => existingClient.focus());
     return self.clients.openWindow(targetUrl);
   }));

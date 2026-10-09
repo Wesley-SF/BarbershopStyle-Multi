@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import AdminPwaInstall from "./AdminPwaInstall";
+import AdminPushNotifications from "./AdminPushNotifications";
 
 const days = [
   { key: "1", label: "Segunda-feira" },
@@ -25,7 +26,7 @@ function normalizeHours(businessHours = {}) {
   );
 }
 
-function StoreOperationalSettings({ storeId }) {
+function StoreOperationalSettings({ storeId, userId }) {
   const [hours, setHours] = useState(() => normalizeHours());
   const [slotInterval, setSlotInterval] = useState("10");
   const [minimumNotice, setMinimumNotice] = useState("30");
@@ -221,6 +222,7 @@ function StoreOperationalSettings({ storeId }) {
         </button>
       </form>
       <AdminPwaInstall />
+      <AdminPushNotifications storeId={storeId} userId={userId} />
     </section>
   );
 }

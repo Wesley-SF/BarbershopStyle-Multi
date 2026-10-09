@@ -52,6 +52,8 @@ Use exatamente o mesmo valor configurado em `APPOINTMENTS_WEBHOOK_SECRET`. Assim
 
 ### 5. Testar
 
-A interface de ativação de notificações está temporariamente desabilitada. O Service Worker e os arquivos de infraestrutura permanecem no projeto, mas o painel não solicita permissão nem cria subscriptions automaticamente.
+A ativação fica em **Admin > Configurações > Avisos de novos agendamentos**. A permissão do navegador só é solicitada depois do clique em **Ativar notificações** e vale para o aparelho/navegador atual.
 
-Quando a interface de notificações for reativada, os testes de subscription e recebimento deverão ser executados novamente. No estado atual, o painel não solicita permissão, não cria subscriptions e não envia chamadas Push automaticamente; Realtime e o fluxo principal continuam independentes.
+No iPhone, instale primeiro o PWA pelo Safari usando **Compartilhar > Adicionar à Tela de Início** e faça a ativação dentro do aplicativo instalado. Para desativar somente o aparelho atual, use **Desativar neste aparelho**.
+
+Valide com um novo agendamento da mesma loja do administrador. O Web Push deve chegar somente aos dispositivos cadastrados para aquela `store_id`; NTFY continua independente. Ao tocar na notificação, uma janela já aberta do Admin recebe foco ou `/admin` é aberto.

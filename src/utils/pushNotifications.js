@@ -17,6 +17,22 @@ export async function getCurrentPushSubscription() {
   return registration.pushManager.getSubscription();
 }
 
+export async function isAdminPushSubscriptionSaved(subscription, userId, storeId) {
+  if (!subscription?.endpoint || !userId || !storeId) return false;
+
+  const { data, error } = await supabase
+    .from("push_subscriptions")
+    .select("id")
+    .eq("endpoint", subscription.endpoint)
+    .eq("user_id", userId)
+    .eq("store_id", storeId)
+    .eq("role", "admin")
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function createAdminPushSubscription(publicVapidKey) {
   if (!publicVapidKey) throw new Error("A chave pública VAPID não foi configurada.");
   const registration = await navigator.serviceWorker.ready;
@@ -43,14 +59,23 @@ export async function saveAdminPushSubscription(subscription, userId, storeId) {
   if (error) throw error;
 }
 
-export async function removeAdminPushSubscription(storeId) {
+export async function removeAdminPushSubscription(userId, storeId) {
   const subscription = await getCurrentPushSubscription();
-  if (!subscription) return;
-  const { error } = await supabase
+  if (!subscription) return false;
+  const { data, error } = await supabase
     .from("push_subscriptions")
     .delete()
     .eq("endpoint", subscription.endpoint)
-    .eq("store_id", storeId);
-  if (error) throw error;
+    .eq("user_id", userId)
+    .eq("store_id", storeId)
+    .eq("role", "admin")
+    .select("id");
+  if (error) {
+    await subscription.unsubscribe().catch(() => false);
+    throw error;
+  }
+
+  if (!data?.length) return false;
   await subscription.unsubscribe();
+  return true;
 }

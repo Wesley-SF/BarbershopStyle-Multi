@@ -1975,9 +1975,29 @@ h1 {
 .admin-pwa-installed { color: var(--admin-success) !important; font-weight: 700; }
 .admin-pwa-install-button { grid-column: auto; flex: 0 0 auto; }
 
+.admin-push-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  color: var(--admin-text);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.admin-push-settings h2 { margin-bottom: .45rem; }
+.admin-push-settings p:last-child { margin-bottom: 0; }
+.admin-push-settings > div > p:not(.eyebrow):not(.admin-feedback) { color: var(--admin-text-muted); }
+.admin-push-button { grid-column: auto; flex: 0 0 auto; }
+
 @media (max-width: 600px) {
   .admin-pwa-install { align-items: stretch; flex-direction: column; }
   .admin-pwa-install-button { width: 100%; }
+  .admin-push-settings { align-items: stretch; flex-direction: column; }
+  .admin-push-button { width: 100%; }
 }
 .admin-tabs {
   display: flex;
