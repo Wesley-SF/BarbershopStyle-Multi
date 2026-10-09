@@ -20,6 +20,7 @@ export default defineConfig({
         start_url: "/admin",
         scope: "/admin",
         display: "standalone",
+        prefer_related_applications: false,
         background_color: "#0a0b0d",
         theme_color: "#d4a84f",
         icons: [

@@ -39,8 +39,6 @@ export function getPwaInstallState() {
   const isInstalled = isStandalone || appInstalledInSession;
   return {
     canPromptInstall: !isInstalled && deferredInstallPrompt !== null,
-    showAndroidInstructions:
-      !isInstalled && /Android/i.test(window.navigator.userAgent),
     showIosInstructions: !isInstalled && isIosDevice(),
     isInstalled,
     isStandalone,

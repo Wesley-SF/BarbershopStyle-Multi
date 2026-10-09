@@ -17,7 +17,6 @@ function AdminPwaInstall() {
   if (
     !installState.isInstalled &&
     !installState.canPromptInstall &&
-    !installState.showAndroidInstructions &&
     !installState.showIosInstructions
   ) {
     return null;
@@ -42,12 +41,6 @@ function AdminPwaInstall() {
         )}
         {!installState.isInstalled && installState.canPromptInstall && (
           <p><strong>Android/Chrome:</strong> instale o painel para abrir o Admin diretamente.</p>
-        )}
-        {!installState.isInstalled && !installState.canPromptInstall && installState.showAndroidInstructions && (
-          <p>
-            Para instalar, abra o menu ⋮ do Chrome e escolha “Instalar aplicativo” ou
-            “Adicionar à tela inicial”.
-          </p>
         )}
         {!installState.isInstalled && installState.showIosInstructions && (
           <p>No Safari, toque em Compartilhar → Adicionar à Tela de Início.</p>
