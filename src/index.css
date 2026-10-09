@@ -992,6 +992,8 @@ h1 {
   background: rgba(212, 168, 79, .12);
 }
 
+.appointment-action--cancel { grid-column: 1 / -1; }
+
 .appointment-whatsapp-error {
   grid-column: 1 / -1;
   margin: 0;

@@ -109,6 +109,21 @@ function getStatusClass(status) {
   return statusLabels[status] ? `status-badge--${status}` : "status-badge--default";
 }
 
+function buildWhatsAppMessage(appointment, storeName) {
+  const formattedDate = formatDateBR(appointment.appointment_date);
+  const formattedTime = appointment.appointment_time.slice(0, 5);
+
+  if (appointment.status === APPOINTMENT_STATUS.CONFIRMED) {
+    return `Olá, ${appointment.customer_name}! Seu agendamento no ${storeName} foi confirmado.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nAguardamos você!`;
+  }
+
+  if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
+    return `Olá, ${appointment.customer_name}!\n\nInfelizmente precisamos cancelar seu agendamento na ${storeName} para o dia ${formattedDate} às ${formattedTime} devido a um imprevisto.\n\nPedimos desculpas pelo transtorno.\n\nEntre em contato conosco para reagendarmos seu horário.`;
+  }
+
+  return "";
+}
+
 function Admin() {
   const { storeId } = useOutletContext();
   const [storeBranding, setStoreBranding] = useState(null);
@@ -668,12 +683,16 @@ function Admin() {
     }
   };
 
-  const handleStatusChange = async (appointmentId, newStatus) => {
+  const handleStatusChange = async (appointmentId, currentStatus, newStatus) => {
+    const transitionIsAllowed =
+      (currentStatus === APPOINTMENT_STATUS.PENDING &&
+        [APPOINTMENT_STATUS.CONFIRMED, APPOINTMENT_STATUS.CANCELLED].includes(newStatus)) ||
+      (currentStatus === APPOINTMENT_STATUS.CONFIRMED &&
+        newStatus === APPOINTMENT_STATUS.CANCELLED);
+
     if (
       updatingAppointmentId !== null ||
-      ![APPOINTMENT_STATUS.CONFIRMED, APPOINTMENT_STATUS.CANCELLED].includes(
-        newStatus,
-      )
+      !transitionIsAllowed
     ) {
       return;
     }
@@ -688,7 +707,7 @@ function Admin() {
         .update({ status: newStatus })
         .eq("id", appointmentId)
         .eq("store_id", storeId)
-        .eq("status", APPOINTMENT_STATUS.PENDING)
+        .eq("status", currentStatus)
         .select("id, status");
 
       if (error) {
@@ -721,7 +740,9 @@ function Admin() {
       setStatusUpdateSuccess(
         newStatus === APPOINTMENT_STATUS.CONFIRMED
           ? "Agendamento confirmado com sucesso."
-          : "Agendamento recusado com sucesso.",
+          : currentStatus === APPOINTMENT_STATUS.CONFIRMED
+            ? "Agendamento cancelado com sucesso."
+            : "Agendamento recusado com sucesso.",
       );
     } catch (error) {
       console.error("Erro inesperado ao atualizar status:", error);
@@ -732,7 +753,11 @@ function Admin() {
   };
 
   const handleConfirmAppointment = (appointmentId) => {
-    handleStatusChange(appointmentId, APPOINTMENT_STATUS.CONFIRMED);
+    handleStatusChange(
+      appointmentId,
+      APPOINTMENT_STATUS.PENDING,
+      APPOINTMENT_STATUS.CONFIRMED,
+    );
   };
 
   const handleRejectAppointment = (appointmentId) => {
@@ -741,11 +766,29 @@ function Admin() {
     );
 
     if (shouldReject) {
-      handleStatusChange(appointmentId, APPOINTMENT_STATUS.CANCELLED);
+      handleStatusChange(
+        appointmentId,
+        APPOINTMENT_STATUS.PENDING,
+        APPOINTMENT_STATUS.CANCELLED,
+      );
     }
   };
 
-  const handleOpenWhatsApp = (appointment, messageType) => {
+  const handleCancelConfirmedAppointment = (appointmentId) => {
+    const shouldCancel = window.confirm(
+      "Tem certeza que deseja cancelar este agendamento?",
+    );
+
+    if (shouldCancel) {
+      handleStatusChange(
+        appointmentId,
+        APPOINTMENT_STATUS.CONFIRMED,
+        APPOINTMENT_STATUS.CANCELLED,
+      );
+    }
+  };
+
+  const handleOpenWhatsApp = (appointment) => {
     if (!isValidBrazilianWhatsAppPhone(appointment.customer_phone)) {
       setWhatsAppError({
         appointmentId: appointment.id,
@@ -754,12 +797,12 @@ function Admin() {
       return;
     }
 
-    const formattedDate = formatDateBR(appointment.appointment_date);
-    const formattedTime = appointment.appointment_time.slice(0, 5);
-    const message =
-      messageType === "confirmation"
-        ? `Olá, ${appointment.customer_name}! Seu agendamento no ${storeBranding?.display_name ?? "estabelecimento"} foi confirmado.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nAguardamos você!`
-        : `Olá, ${appointment.customer_name}! Infelizmente não foi possível confirmar seu agendamento no ${storeBranding?.display_name ?? "estabelecimento"}.\n\nServiço(s): ${appointment.service}\nData: ${formattedDate}\nHorário: ${formattedTime}\n\nEntre em contato conosco para escolher outro horário.`;
+    const message = buildWhatsAppMessage(
+      appointment,
+      storeBranding?.display_name ?? "barbearia",
+    );
+
+    if (!message) return;
 
     setWhatsAppError({ appointmentId: null, message: "" });
     window.open(
@@ -1032,12 +1075,23 @@ function Admin() {
                           <button
                             className="appointment-action appointment-action--whatsapp"
                             type="button"
-                            onClick={() =>
-                              handleOpenWhatsApp(appointment, "confirmation")
-                            }
+                            onClick={() => handleOpenWhatsApp(appointment)}
                           >
                             Enviar confirmação pelo WhatsApp
                           </button>
+                        )}
+                        <button
+                          className="appointment-action appointment-action--reject appointment-action--cancel"
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() => handleCancelConfirmedAppointment(appointment.id)}
+                        >
+                          Cancelar agendamento
+                        </button>
+                        {isUpdating && (
+                          <span className="status-updating" role="status">
+                            Cancelando...
+                          </span>
                         )}
                       </>
                     ) : appointment.status === APPOINTMENT_STATUS.COMPLETED ? (
@@ -1052,9 +1106,9 @@ function Admin() {
                         <button
                           className="appointment-action appointment-action--whatsapp"
                           type="button"
-                          onClick={() => handleOpenWhatsApp(appointment, "rejection")}
+                          onClick={() => handleOpenWhatsApp(appointment)}
                         >
-                          Enviar aviso pelo WhatsApp
+                          Avisar cancelamento
                         </button>
                       </>
                     ) : (
