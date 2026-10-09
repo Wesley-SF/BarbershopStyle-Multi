@@ -15,8 +15,10 @@ function AdminPwaInstall() {
   );
 
   if (
-    installState.isStandalone ||
-    (!installState.canPromptInstall && !installState.showIosInstructions)
+    !installState.isInstalled &&
+    !installState.canPromptInstall &&
+    !installState.showAndroidInstructions &&
+    !installState.showIosInstructions
   ) {
     return null;
   }
@@ -32,14 +34,26 @@ function AdminPwaInstall() {
     <section className="admin-pwa-install" aria-labelledby="admin-pwa-title">
       <div>
         <p className="eyebrow">Aplicativo</p>
-        <h2 id="admin-pwa-title">BarbershopStyle no celular</h2>
-        {installState.canPromptInstall ? (
-          <p>Instale o painel para abrir o Admin diretamente pela tela inicial.</p>
-        ) : (
-          <p>No Safari, toque em Compartilhar e depois em “Adicionar à Tela de Início”.</p>
+        <h2 id="admin-pwa-title">BarbershopStyle Admin</h2>
+        {installState.isInstalled && (
+          <p className="admin-pwa-installed" role="status">
+            ✓ BarbershopStyle está instalado neste aparelho
+          </p>
+        )}
+        {!installState.isInstalled && installState.canPromptInstall && (
+          <p><strong>Android/Chrome:</strong> instale o painel para abrir o Admin diretamente.</p>
+        )}
+        {!installState.isInstalled && !installState.canPromptInstall && installState.showAndroidInstructions && (
+          <p>
+            Para instalar, abra o menu ⋮ do Chrome e escolha “Instalar aplicativo” ou
+            “Adicionar à tela inicial”.
+          </p>
+        )}
+        {!installState.isInstalled && installState.showIosInstructions && (
+          <p>No Safari, toque em Compartilhar → Adicionar à Tela de Início.</p>
         )}
       </div>
-      {installState.canPromptInstall && (
+      {!installState.isInstalled && installState.canPromptInstall && (
         <button
           className="schedule-block-submit admin-pwa-install-button"
           type="button"

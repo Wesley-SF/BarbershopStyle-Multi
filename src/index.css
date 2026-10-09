@@ -1971,6 +1971,8 @@ h1 {
 
 .admin-pwa-install h2 { margin-bottom: .45rem; }
 .admin-pwa-install p:last-child { margin-bottom: 0; color: var(--admin-text-muted); }
+.admin-pwa-install p strong { color: var(--admin-text); }
+.admin-pwa-installed { color: var(--admin-success) !important; font-weight: 700; }
 .admin-pwa-install-button { grid-column: auto; flex: 0 0 auto; }
 
 @media (max-width: 600px) {

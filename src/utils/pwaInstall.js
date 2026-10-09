@@ -1,4 +1,5 @@
 let deferredInstallPrompt = null;
+let appInstalledInSession = false;
 const installAvailabilityListeners = new Set();
 
 function isRunningStandalone() {
@@ -28,15 +29,20 @@ if (typeof window !== "undefined") {
 
   window.addEventListener("appinstalled", () => {
     deferredInstallPrompt = null;
+    appInstalledInSession = true;
     notifyAvailabilityChanged();
   });
 }
 
 export function getPwaInstallState() {
   const isStandalone = isRunningStandalone();
+  const isInstalled = isStandalone || appInstalledInSession;
   return {
-    canPromptInstall: !isStandalone && deferredInstallPrompt !== null,
-    showIosInstructions: !isStandalone && isIosDevice(),
+    canPromptInstall: !isInstalled && deferredInstallPrompt !== null,
+    showAndroidInstructions:
+      !isInstalled && /Android/i.test(window.navigator.userAgent),
+    showIosInstructions: !isInstalled && isIosDevice(),
+    isInstalled,
     isStandalone,
   };
 }
