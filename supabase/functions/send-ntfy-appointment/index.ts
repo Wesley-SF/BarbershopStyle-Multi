@@ -1,6 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const NTFY_TIMEOUT_MS = 10_000;
+const DEFAULT_RATE_LIMIT_DELAY_MS = 6_000;
+const MAX_RETRY_AFTER_MS = 10_000;
+const DAILY_RATE_LIMIT_CODES = new Set([42905, 42908, 42910]);
 
 const requiredEnv = (name: string) => {
   const value = Deno.env.get(name);
@@ -40,11 +43,59 @@ const getHttpErrorCategory = (status: number) => {
   return "ntfy_http_error";
 };
 
+const parseRetryAfterMs = (value: string | null) => {
+  if (!value) return null;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    const milliseconds = Math.ceil(seconds * 1_000);
+    return milliseconds <= MAX_RETRY_AFTER_MS ? milliseconds : null;
+  }
+
+  const retryAt = Date.parse(value);
+  if (Number.isNaN(retryAt)) return null;
+  const milliseconds = retryAt - Date.now();
+  return milliseconds > 0 && milliseconds <= MAX_RETRY_AFTER_MS
+    ? milliseconds
+    : null;
+};
+
+const readNtfyError = async (response: Response) => {
+  try {
+    const body = (await response.text()).slice(0, 4_096);
+    const parsed = JSON.parse(body);
+    const code = Number(parsed?.code);
+    const message = typeof parsed?.error === "string"
+      ? parsed.error
+      : typeof parsed?.message === "string"
+        ? parsed.message
+        : "";
+    return {
+      code: Number.isInteger(code) ? code : null,
+      message: message.slice(0, 500),
+    };
+  } catch {
+    return { code: null, message: "" };
+  }
+};
+
+const isDailyRateLimit = (code: number | null, message: string) => {
+  if (code !== null && DAILY_RATE_LIMIT_CODES.has(code)) return true;
+  const normalizedMessage = message.toLowerCase();
+  return normalizedMessage.includes("daily") &&
+    (normalizedMessage.includes("quota") || normalizedMessage.includes("limit"));
+};
+
+const wait = (milliseconds: number) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 Deno.serve(async (request) => {
   let appointmentId: string | number | null = null;
   let storeId: string | null = null;
   let ntfyEnabled: boolean | null = null;
   let deliveryAttempted = false;
+  let retryCount = 0;
+  let ntfyErrorCode: number | null = null;
 
   const respond = (
     body: Record<string, unknown>,
@@ -61,7 +112,9 @@ Deno.serve(async (request) => {
       delivery_attempted: deliveryAttempted,
       delivery_success: deliverySuccess,
       http_status: httpStatus,
+      ntfy_error_code: ntfyErrorCode,
       error_category: errorCategory,
+      retry_count: retryCount,
     }));
     return jsonResponse(body, status);
   };
@@ -211,52 +264,108 @@ Deno.serve(async (request) => {
       `Horário: ${limitedText(appointment.appointment_time, 8).slice(0, 5)}`,
     ].join("\n");
 
+    const sendNotification = async () => {
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), NTFY_TIMEOUT_MS);
+      try {
+        const response = await fetch(ntfyDestination, {
+          method: "POST",
+          headers: {
+            "Title": "Novo agendamento",
+            "Priority": "high",
+            "Tags": "calendar,barber",
+            "Content-Type": "text/plain; charset=utf-8",
+          },
+          body: message,
+          signal: abortController.signal,
+        });
+        return { response, timedOut: false };
+      } catch {
+        return {
+          response: null,
+          timedOut: abortController.signal.aborted,
+        };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
     deliveryAttempted = true;
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), NTFY_TIMEOUT_MS);
+    let attempt = await sendNotification();
 
-    try {
-      const response = await fetch(ntfyDestination, {
-        method: "POST",
-        headers: {
-          "Title": "Novo agendamento",
-          "Priority": "high",
-          "Tags": "calendar,barber",
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-        body: message,
-        signal: abortController.signal,
-      });
+    if (attempt.response?.status === 429) {
+      const firstError = await readNtfyError(attempt.response);
+      ntfyErrorCode = firstError.code;
 
-      if (!response.ok) {
+      if (isDailyRateLimit(firstError.code, firstError.message)) {
         return respond(
           { error: "Não foi possível enviar a notificação." },
           502,
           false,
-          response.status,
-          getHttpErrorCategory(response.status),
+          429,
+          "daily_rate_limit",
         );
       }
 
-      return respond(
-        { success: true, sent: true, message: "Notificação enviada." },
-        200,
-        true,
-        response.status,
-        null,
-      );
-    } catch {
-      const timedOut = abortController.signal.aborted;
+      const retryAfterHeader = attempt.response.headers.get("Retry-After");
+      const retryAfterMs = parseRetryAfterMs(retryAfterHeader);
+      if (retryAfterHeader && retryAfterMs === null) {
+        return respond(
+          { error: "Não foi possível enviar a notificação." },
+          502,
+          false,
+          429,
+          "temporary_rate_limit",
+        );
+      }
+
+      const retryDelay = retryAfterMs ?? DEFAULT_RATE_LIMIT_DELAY_MS;
+      await wait(retryDelay);
+      retryCount = 1;
+      attempt = await sendNotification();
+    }
+
+    if (!attempt.response) {
       return respond(
         { error: "Não foi possível enviar a notificação." },
         502,
         false,
         null,
-        timedOut ? "timeout" : "network_error",
+        attempt.timedOut ? "timeout" : "network_error",
       );
-    } finally {
-      clearTimeout(timeoutId);
     }
+
+    if (!attempt.response.ok) {
+      if (attempt.response.status === 429) {
+        const finalError = await readNtfyError(attempt.response);
+        ntfyErrorCode = finalError.code;
+        return respond(
+          { error: "Não foi possível enviar a notificação." },
+          502,
+          false,
+          429,
+          isDailyRateLimit(finalError.code, finalError.message)
+            ? "daily_rate_limit"
+            : "temporary_rate_limit",
+        );
+      }
+
+      return respond(
+        { error: "Não foi possível enviar a notificação." },
+        502,
+        false,
+        attempt.response.status,
+        getHttpErrorCategory(attempt.response.status),
+      );
+    }
+
+    return respond(
+      { success: true, sent: true, message: "Notificação enviada." },
+      200,
+      true,
+      attempt.response.status,
+      null,
+    );
   } catch {
     return respond(
       { error: "Erro interno ao enviar notificação." },
