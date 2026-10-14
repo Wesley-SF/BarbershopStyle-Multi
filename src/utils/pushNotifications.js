@@ -11,6 +11,29 @@ function urlBase64ToUint8Array(value) {
   return Uint8Array.from(rawData, (character) => character.charCodeAt(0));
 }
 
+export function isValidVapidPublicKey(value) {
+  if (!value || value !== value.trim()) return false;
+
+  try {
+    const decoded = urlBase64ToUint8Array(value);
+    return decoded.length === 65 && decoded[0] === 4;
+  } catch {
+    return false;
+  }
+}
+
+export function doesPushSubscriptionUseVapidKey(subscription, publicVapidKey) {
+  const currentKey = subscription?.options?.applicationServerKey;
+  if (!currentKey || !isValidVapidPublicKey(publicVapidKey)) return false;
+
+  const expectedKey = urlBase64ToUint8Array(publicVapidKey);
+  const actualKey = new Uint8Array(currentKey);
+  return (
+    actualKey.length === expectedKey.length &&
+    actualKey.every((byte, index) => byte === expectedKey[index])
+  );
+}
+
 export async function getCurrentPushSubscription() {
   if (!isWebPushSupported()) return null;
   const registration = await navigator.serviceWorker.ready;
@@ -34,7 +57,9 @@ export async function isAdminPushSubscriptionSaved(subscription, userId, storeId
 }
 
 export async function createAdminPushSubscription(publicVapidKey) {
-  if (!publicVapidKey) throw new Error("A chave pública VAPID não foi configurada.");
+  if (!isValidVapidPublicKey(publicVapidKey)) {
+    throw new Error("A chave pública VAPID não foi configurada corretamente.");
+  }
   const registration = await navigator.serviceWorker.ready;
   const existingSubscription = await registration.pushManager.getSubscription();
   return existingSubscription ?? registration.pushManager.subscribe({

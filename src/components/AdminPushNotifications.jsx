@@ -3,8 +3,10 @@ import { supabase } from "../lib/supabase";
 import { getPwaInstallState } from "../utils/pwaInstall";
 import {
   createAdminPushSubscription,
+  doesPushSubscriptionUseVapidKey,
   getCurrentPushSubscription,
   isAdminPushSubscriptionSaved,
+  isValidVapidPublicKey,
   isWebPushSupported,
   removeAdminPushSubscription,
   saveAdminPushSubscription,
@@ -40,14 +42,20 @@ function AdminPushNotifications({ storeId, userId }) {
       return;
     }
 
-    if (!vapidPublicKey) {
+    if (!isValidVapidPublicKey(vapidPublicKey)) {
       setStatus("unconfigured");
       return;
     }
 
     const subscription = await getCurrentPushSubscription();
     const isSaved = await isAdminPushSubscriptionSaved(subscription, userId, storeId);
-    setStatus(isSaved ? "active" : "inactive");
+    const usesCurrentVapidKey = doesPushSubscriptionUseVapidKey(
+      subscription,
+      vapidPublicKey,
+    );
+    setStatus(
+      isSaved && usesCurrentVapidKey ? "active" : isSaved ? "stale" : "inactive",
+    );
   }, [storeId, userId]);
 
   useEffect(() => {
@@ -95,8 +103,15 @@ function AdminPushNotifications({ storeId, userId }) {
         userId,
         storeId,
       );
+      const usesCurrentVapidKey = doesPushSubscriptionUseVapidKey(
+        subscription,
+        vapidPublicKey,
+      );
 
-      if (subscription && !belongsToCurrentAdmin) {
+      if (subscription && belongsToCurrentAdmin && !usesCurrentVapidKey) {
+        await removeAdminPushSubscription(userId, storeId);
+        subscription = null;
+      } else if (subscription && !belongsToCurrentAdmin) {
         await subscription.unsubscribe();
         subscription = null;
       }
@@ -138,6 +153,8 @@ function AdminPushNotifications({ storeId, userId }) {
     loading: "Verificando este aparelho...",
     active: "Este aparelho receberá avisos de novos agendamentos desta barbearia.",
     inactive: "Ative para receber avisos de novos agendamentos neste aparelho.",
+    stale:
+      "A chave de notificações mudou. Reative este aparelho para continuar recebendo avisos.",
     denied: "As notificações estão bloqueadas. Libere-as nas configurações do navegador.",
     unsupported: "Este navegador não oferece suporte a notificações Web Push.",
     unconfigured: "As notificações ainda não foram configuradas para este ambiente.",
@@ -163,9 +180,13 @@ function AdminPushNotifications({ storeId, userId }) {
           </p>
         )}
       </div>
-      {status === "inactive" && (
+      {(status === "inactive" || status === "stale") && (
         <button className="schedule-block-submit admin-push-button" type="button" disabled={isWorking} onClick={handleActivate}>
-          {isWorking ? "Ativando..." : "Ativar notificações"}
+          {isWorking
+            ? "Ativando..."
+            : status === "stale"
+              ? "Reativar notificações"
+              : "Ativar notificações"}
         </button>
       )}
       {status === "active" && (

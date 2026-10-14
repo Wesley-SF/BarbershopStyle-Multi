@@ -13,16 +13,31 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 
-const formatDateBR = (date: string) => {
-  const [year, month, day] = String(date).split("-");
-  return year && month && day ? `${day}/${month}/${year}` : date;
-};
-
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const logEvent = (
+  event: Record<string, unknown>,
+  level: "info" | "error" = "info",
+) => console[level](JSON.stringify(event));
+
+const getErrorCategory = (statusCode: number) => {
+  if (statusCode === 400) return "invalid_subscription_or_payload";
+  if (statusCode === 401 || statusCode === 403) return "vapid_authentication";
+  if (statusCode === 404 || statusCode === 410) return "subscription_expired";
+  if (statusCode === 429) return "rate_limited";
+  if (statusCode >= 500) return "push_service_unavailable";
+  if (statusCode === 0) return "network_or_unknown";
+  return "push_service_error";
+};
+
 Deno.serve(async (request) => {
-  if (request.method !== "POST") return jsonResponse({ error: "Método não permitido." }, 405);
+  if (request.method !== "POST") {
+    return jsonResponse({ error: "Método não permitido." }, 405);
+  }
+
+  let appointmentId: string | number | null = null;
+  let storeId: string | null = null;
 
   try {
     const webhookSecret = requiredEnv("APPOINTMENTS_WEBHOOK_SECRET");
@@ -41,10 +56,20 @@ Deno.serve(async (request) => {
     }
 
     const appointment = payload.record;
-    if (
-      typeof appointment.store_id !== "string" ||
-      !uuidPattern.test(appointment.store_id)
-    ) {
+    appointmentId = appointment.id ?? null;
+    storeId = typeof appointment.store_id === "string" ? appointment.store_id : null;
+
+    if (storeId === null || !uuidPattern.test(storeId)) {
+      logEvent({
+        event: "push_summary",
+        appointment_id: appointmentId,
+        store_id: storeId,
+        subscriptions_found: 0,
+        sent_successfully: 0,
+        failed: 0,
+        expired_removed: 0,
+        outcome: "store_id_invalid",
+      });
       return jsonResponse({ success: true, sent: 0, reason: "STORE_ID_INVALID" });
     }
 
@@ -63,15 +88,16 @@ Deno.serve(async (request) => {
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
       .eq("role", "admin")
-      .eq("store_id", appointment.store_id);
+      .eq("store_id", storeId);
 
     if (subscriptionsError) throw subscriptionsError;
 
     const notification = JSON.stringify({
       title: "Novo agendamento",
-      body: `${appointment.customer_name} — ${appointment.service}, ${formatDateBR(appointment.appointment_date)} às ${String(appointment.appointment_time).slice(0, 5)}`,
+      body: "Novo agendamento recebido. Abra o painel para ver os detalhes.",
       url: "/admin",
-      tag: `appointment-${appointment.id}`,
+      tag: `appointment-${appointmentId}`,
+      appointment_id: appointmentId,
     });
 
     const results = await Promise.allSettled(
@@ -85,42 +111,84 @@ Deno.serve(async (request) => {
             notification,
             { TTL: 300 },
           );
-          return { id: subscription.id, sent: true, expired: false };
+          return { sent: true, expired: false, removed: false };
         } catch (error) {
-          const statusCode = Number((error as { statusCode?: number }).statusCode ?? 0);
+          const statusCode = Number(
+            (error as { statusCode?: number }).statusCode ?? 0,
+          );
           const expired = statusCode === 404 || statusCode === 410;
+          const errorCategory = getErrorCategory(statusCode);
+          let removed = false;
+
           if (expired) {
             const { error: deleteError } = await supabase
               .from("push_subscriptions")
               .delete()
               .eq("id", subscription.id)
-              .eq("store_id", appointment.store_id);
-            if (deleteError) console.error("Erro ao remover assinatura expirada:", deleteError);
-          } else {
-            console.error("Erro ao enviar Web Push:", {
-              subscriptionId: subscription.id,
-              statusCode,
-            });
+              .eq("store_id", storeId);
+            removed = !deleteError;
+
+            if (deleteError) {
+              logEvent({
+                event: "push_failure",
+                appointment_id: appointmentId,
+                store_id: storeId,
+                http_status: statusCode,
+                error_category: "expired_subscription_cleanup_failed",
+              }, "error");
+            }
           }
-          return { id: subscription.id, sent: false, expired, statusCode };
+
+          logEvent({
+            event: "push_failure",
+            appointment_id: appointmentId,
+            store_id: storeId,
+            http_status: statusCode || null,
+            error_category: errorCategory,
+          }, "error");
+          return { sent: false, expired, removed };
         }
       }),
     );
 
-    const reports = results.map((result) =>
-      result.status === "fulfilled"
-        ? result.value
-        : { sent: false, expired: false },
-    );
+    const reports = results.map((result) => {
+      if (result.status === "fulfilled") return result.value;
+
+      logEvent({
+        event: "push_failure",
+        appointment_id: appointmentId,
+        store_id: storeId,
+        http_status: null,
+        error_category: "unexpected_send_rejection",
+      }, "error");
+      return { sent: false, expired: false, removed: false };
+    });
+
+    const summary = {
+      event: "push_summary",
+      appointment_id: appointmentId,
+      store_id: storeId,
+      subscriptions_found: reports.length,
+      sent_successfully: reports.filter((item) => item.sent).length,
+      failed: reports.filter((item) => !item.sent).length,
+      expired_removed: reports.filter((item) => item.removed).length,
+    };
+    logEvent(summary);
 
     return jsonResponse({
-      subscriptions: reports.length,
-      sent: reports.filter((item) => item.sent).length,
-      failed: reports.filter((item) => !item.sent).length,
-      removed: reports.filter((item) => item.expired).length,
+      subscriptions: summary.subscriptions_found,
+      sent: summary.sent_successfully,
+      failed: summary.failed,
+      removed: summary.expired_removed,
     });
-  } catch (error) {
-    console.error("Erro na função send-admin-push:", error);
+  } catch {
+    logEvent({
+      event: "push_failure",
+      appointment_id: appointmentId,
+      store_id: storeId,
+      http_status: null,
+      error_category: "function_error",
+    }, "error");
     return jsonResponse({ error: "Não foi possível enviar as notificações." }, 500);
   }
 });
