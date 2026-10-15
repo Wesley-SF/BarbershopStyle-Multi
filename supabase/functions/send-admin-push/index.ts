@@ -90,6 +90,118 @@ const isClearlyInvalidSubscription = (statusCode: number, error: unknown) => {
   ].some((marker) => safeInspectionText.includes(marker));
 };
 
+const getPushProvider = (endpoint: unknown) => {
+  if (typeof endpoint !== "string") return "unknown";
+
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase();
+    if (
+      hostname === "fcm.googleapis.com" ||
+      hostname === "android.googleapis.com"
+    ) {
+      return "fcm";
+    }
+    if (hostname.endsWith("push.services.mozilla.com")) return "mozilla";
+    if (hostname.endsWith("push.apple.com")) return "apple";
+  } catch {
+    return "unknown";
+  }
+
+  return "other";
+};
+
+const getSafeProviderDiagnostics = (
+  error: unknown,
+  endpoint: unknown,
+) => {
+  const diagnostics: {
+    provider: string;
+    provider_error_code?: string;
+    provider_error_reason?: string;
+  } = { provider: getPushProvider(endpoint) };
+
+  if (typeof error !== "object" || error === null) return diagnostics;
+
+  const pushError = error as {
+    body?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
+  let parsedBody: Record<string, unknown> | null = null;
+
+  if (typeof pushError.body === "string") {
+    try {
+      const parsed = JSON.parse(pushError.body);
+      if (typeof parsed === "object" && parsed !== null) {
+        parsedBody = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // O corpo não estruturado é usado somente na classificação abaixo.
+    }
+  }
+
+  const bodyError = parsedBody?.error;
+  const structuredError =
+    typeof bodyError === "object" && bodyError !== null
+      ? bodyError as Record<string, unknown>
+      : null;
+  const details = Array.isArray(structuredError?.details)
+    ? structuredError.details
+    : [];
+  const detailErrorCode = details
+    .map((detail) =>
+      typeof detail === "object" && detail !== null
+        ? (detail as Record<string, unknown>).errorCode
+        : undefined
+    )
+    .find((value) => typeof value === "string");
+  const codeCandidates = [
+    detailErrorCode,
+    structuredError?.status,
+    parsedBody?.errno,
+    parsedBody?.code,
+    pushError.code,
+  ];
+  const safeCode = codeCandidates.find(
+    (value) =>
+      (typeof value === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(value)) ||
+      (typeof value === "number" && Number.isSafeInteger(value)),
+  );
+
+  if (safeCode !== undefined) {
+    diagnostics.provider_error_code = String(safeCode);
+  }
+
+  const inspectionText = [
+    pushError.code,
+    pushError.body,
+    pushError.message,
+    structuredError?.status,
+    structuredError?.message,
+    parsedBody?.error,
+    parsedBody?.message,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  const reasonPatterns: Array<[RegExp, string]> = [
+    [/unauthorizedregistration/, "UnauthorizedRegistration"],
+    [/invalidregistration/, "InvalidRegistration"],
+    [/badjwttoken|bad jwt token/, "BadJwtToken"],
+    [/invalid[^.]{0,40}vapid|vapid[^.]{0,40}invalid/, "InvalidVapid"],
+    [/invalid[^.]{0,40}encrypt|encrypt[^.]{0,40}invalid/, "InvalidEncryption"],
+    [/invalid[^.]{0,40}subscription|subscription[^.]{0,40}invalid/, "InvalidSubscription"],
+    [/invalid_argument|invalid argument/, "InvalidArgument"],
+    [/badrequest|bad request/, "BadRequest"],
+  ];
+  const matchedReason = reasonPatterns.find(([pattern]) =>
+    pattern.test(inspectionText)
+  );
+
+  if (matchedReason) diagnostics.provider_error_reason = matchedReason[1];
+  return diagnostics;
+};
+
 const getErrorCategory = (statusCode: number, invalidSubscription = false) => {
   if (invalidSubscription) return "subscription_invalid";
   if (statusCode === 400) return "invalid_subscription_or_payload";
@@ -209,6 +321,10 @@ Deno.serve(async (request) => {
             statusCode,
             invalidSubscription,
           );
+          const providerDiagnostics = getSafeProviderDiagnostics(
+            error,
+            subscription.endpoint,
+          );
           let removed = false;
 
           if (shouldRemove) {
@@ -238,6 +354,7 @@ Deno.serve(async (request) => {
             store_id: storeId,
             http_status: statusCode || null,
             error_category: errorCategory,
+            ...providerDiagnostics,
           }, "error");
           return { sent: false, expired, invalidSubscription, removed };
         }
