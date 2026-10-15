@@ -172,6 +172,31 @@ const getSafeProviderDiagnostics = (
     diagnostics.provider_error_code = String(safeCode);
   }
 
+  const allowedAppleReasons = new Set([
+    "VapidPkHashMismatch",
+    "BadVapidPublicKey",
+    "BadJwtToken",
+    "BadAuthorizationHeader",
+    "BadWebPushRequest",
+    "BadTtl",
+    "BadUrgency",
+    "BadWebPushTopic",
+    "BadPath",
+    "PayloadTooLarge",
+    "TooManyRequests",
+    "InternalServerError",
+    "ServiceUnavailable",
+  ]);
+  const appleReason = parsedBody?.reason;
+
+  if (
+    diagnostics.provider === "apple" &&
+    typeof appleReason === "string" &&
+    allowedAppleReasons.has(appleReason)
+  ) {
+    diagnostics.provider_error_reason = appleReason;
+  }
+
   const inspectionText = [
     pushError.code,
     pushError.body,
@@ -198,7 +223,9 @@ const getSafeProviderDiagnostics = (
     pattern.test(inspectionText)
   );
 
-  if (matchedReason) diagnostics.provider_error_reason = matchedReason[1];
+  if (!diagnostics.provider_error_reason && matchedReason) {
+    diagnostics.provider_error_reason = matchedReason[1];
+  }
   return diagnostics;
 };
 
