@@ -1,10 +1,59 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 
+class FunctionConfigurationError extends Error {
+  category: string;
+
+  constructor(category: string) {
+    super(category);
+    this.category = category;
+  }
+}
+
 const requiredEnv = (name: string) => {
   const value = Deno.env.get(name);
-  if (!value) throw new Error(`Secret ausente: ${name}`);
+  if (!value) {
+    throw new FunctionConfigurationError(
+      `missing_${name.toLowerCase()}`,
+    );
+  }
   return value;
+};
+
+const decodeBase64Url = (value: string) => {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+};
+
+const isValidVapidKey = (
+  value: string,
+  expectedLength: number,
+  expectedFirstByte?: number,
+) => {
+  try {
+    const decoded = decodeBase64Url(value);
+    return decoded.length === expectedLength &&
+      (expectedFirstByte === undefined || decoded[0] === expectedFirstByte);
+  } catch {
+    return false;
+  }
+};
+
+const validateVapidConfiguration = (
+  subject: string,
+  publicKey: string,
+  privateKey: string,
+) => {
+  if (!/^mailto:.+@.+|^https:\/\/.+/i.test(subject)) {
+    throw new FunctionConfigurationError("vapid_subject_invalid");
+  }
+  if (!isValidVapidKey(publicKey, 65, 4)) {
+    throw new FunctionConfigurationError("vapid_public_key_invalid");
+  }
+  if (!isValidVapidKey(privateKey, 32)) {
+    throw new FunctionConfigurationError("vapid_private_key_invalid");
+  }
 };
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -41,7 +90,15 @@ Deno.serve(async (request) => {
 
   try {
     const webhookSecret = requiredEnv("APPOINTMENTS_WEBHOOK_SECRET");
-    if (request.headers.get("x-webhook-secret") !== webhookSecret) {
+    const receivedWebhookSecret = request.headers.get("x-webhook-secret");
+    if (receivedWebhookSecret !== webhookSecret) {
+      logEvent({
+        event: "push_auth_failure",
+        http_status: 401,
+        error_category: receivedWebhookSecret
+          ? "webhook_secret_mismatch"
+          : "webhook_secret_missing",
+      }, "error");
       return jsonResponse({ error: "Não autorizado." }, 401);
     }
 
@@ -78,11 +135,11 @@ Deno.serve(async (request) => {
       requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
-    webpush.setVapidDetails(
-      requiredEnv("VAPID_SUBJECT"),
-      requiredEnv("VAPID_PUBLIC_KEY"),
-      requiredEnv("VAPID_PRIVATE_KEY"),
-    );
+    const vapidSubject = requiredEnv("VAPID_SUBJECT");
+    const vapidPublicKey = requiredEnv("VAPID_PUBLIC_KEY");
+    const vapidPrivateKey = requiredEnv("VAPID_PRIVATE_KEY");
+    validateVapidConfiguration(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
     const { data: subscriptions, error: subscriptionsError } = await supabase
       .from("push_subscriptions")
@@ -109,7 +166,7 @@ Deno.serve(async (request) => {
               keys: { p256dh: subscription.p256dh, auth: subscription.auth },
             },
             notification,
-            { TTL: 300 },
+            { TTL: 300, timeout: 10_000 },
           );
           return { sent: true, expired: false, removed: false };
         } catch (error) {
@@ -181,13 +238,15 @@ Deno.serve(async (request) => {
       failed: summary.failed,
       removed: summary.expired_removed,
     });
-  } catch {
+  } catch (error) {
     logEvent({
       event: "push_failure",
       appointment_id: appointmentId,
       store_id: storeId,
       http_status: null,
-      error_category: "function_error",
+      error_category: error instanceof FunctionConfigurationError
+        ? error.category
+        : "function_error",
     }, "error");
     return jsonResponse({ error: "Não foi possível enviar as notificações." }, 500);
   }

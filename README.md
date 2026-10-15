@@ -38,19 +38,61 @@ supabase functions deploy send-admin-push --no-verify-jwt
 
 `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` são disponibilizadas pelo ambiente das Edge Functions. A função não expõe esses valores ao React. `verify_jwt` fica desativado apenas porque o chamador é o webhook do banco; a função valida obrigatoriamente o header privado `x-webhook-secret`.
 
-### 4. Criar o Database Webhook
+### 4. Configurar o webhook atual do banco
 
-No Dashboard do Supabase, em **Database > Webhooks**, crie um webhook com:
+Em produção, o trigger `appointments_send_admin_push` executa
+`public.notify_admin_new_appointment()`. Essa função lê
+`appointments_webhook_secret` de `vault.decrypted_secrets` e chama, via
+`pg_net`, tanto `send-admin-push` quanto `send-ntfy-appointment`.
 
-- tabela: `public.appointments`;
-- evento: `INSERT`;
-- método: `POST`;
-- URL: `https://SEU_PROJECT_REF.supabase.co/functions/v1/send-admin-push`;
-- header: `x-webhook-secret: UM_SEGREDO_ALEATORIO_FORTE`.
+O valor do Vault deve ser exatamente igual ao secret
+`APPOINTMENTS_WEBHOOK_SECRET` das duas Edge Functions. Não crie um segundo
+Database Webhook no Dashboard: isso duplicaria os envios.
 
-Use exatamente o mesmo valor configurado em `APPOINTMENTS_WEBHOOK_SECRET`. Assim, o envio é iniciado no backend quando o banco recebe o registro e não depende de uma chamada privilegiada do cliente.
+Consultas seguras para conferir a existência do secret e a definição do fluxo,
+sem imprimir o valor descriptografado:
 
-### 5. Testar
+```sql
+select
+  name,
+  decrypted_secret is not null as has_value,
+  char_length(decrypted_secret) as value_length
+from vault.decrypted_secrets
+where name = 'appointments_webhook_secret';
+
+select pg_get_functiondef(
+  'public.notify_admin_new_appointment()'::regprocedure
+);
+
+select
+  event_object_schema,
+  event_object_table,
+  trigger_name,
+  action_timing,
+  event_manipulation
+from information_schema.triggers
+where trigger_name = 'appointments_send_admin_push';
+```
+
+Se o log da Edge Function registrar `webhook_secret_missing`, o header não
+chegou. Se registrar `webhook_secret_mismatch`, o header chegou, mas o valor do
+Vault diverge de `APPOINTMENTS_WEBHOOK_SECRET`. Como secrets de Edge Functions
+não podem ser lidos de volta, gere/guarde um único valor forte e reaplique o
+mesmo valor ao Vault e às duas funções.
+
+### 5. Conferir as chaves VAPID
+
+`VITE_VAPID_PUBLIC_KEY` e `VAPID_PUBLIC_KEY` devem receber a mesma chave
+pública. Uma chave pública válida decodifica para 65 bytes e começa por `0x04`;
+a chave privada decodifica para 32 bytes. O frontend rejeita chaves públicas
+estruturalmente inválidas e a Edge Function registra uma categoria de
+configuração sem registrar nenhuma chave.
+
+Depois de alterar uma variável `VITE_` na Vercel, é necessário gerar um novo
+deploy, pois essas variáveis são incorporadas durante o build. Nunca use
+`VAPID_PRIVATE_KEY` no frontend.
+
+### 6. Testar
 
 A ativação fica em **Admin > Configurações > Avisos de novos agendamentos**. A permissão do navegador só é solicitada depois do clique em **Ativar notificações** e vale para o aparelho/navegador atual.
 
