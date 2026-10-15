@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getPwaInstallState } from "../utils/pwaInstall";
 import {
-  createAdminPushSubscription,
   doesPushSubscriptionUseVapidKey,
   getCurrentPushSubscription,
   isAdminPushSubscriptionSaved,
   isValidVapidPublicKey,
   isWebPushSupported,
   removeAdminPushSubscription,
+  replaceAdminPushSubscription,
   saveAdminPushSubscription,
 } from "../utils/pushNotifications";
 
@@ -97,29 +97,12 @@ function AdminPushNotifications({ storeId, userId }) {
         return;
       }
 
-      let subscription = await getCurrentPushSubscription();
-      const belongsToCurrentAdmin = await isAdminPushSubscriptionSaved(
-        subscription,
+      const subscription = await replaceAdminPushSubscription(
+        vapidPublicKey,
         userId,
         storeId,
       );
-      const usesCurrentVapidKey = doesPushSubscriptionUseVapidKey(
-        subscription,
-        vapidPublicKey,
-      );
-
-      if (subscription && belongsToCurrentAdmin && !usesCurrentVapidKey) {
-        await removeAdminPushSubscription(userId, storeId);
-        subscription = null;
-      } else if (subscription && !belongsToCurrentAdmin) {
-        await subscription.unsubscribe();
-        subscription = null;
-      }
-
-      if (!subscription) {
-        subscription = await createAdminPushSubscription(vapidPublicKey);
-        createdSubscription = subscription;
-      }
+      createdSubscription = subscription;
 
       await saveAdminPushSubscription(subscription, userId, storeId);
       setStatus("active");

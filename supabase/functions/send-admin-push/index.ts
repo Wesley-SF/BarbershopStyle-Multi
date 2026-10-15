@@ -70,7 +70,28 @@ const logEvent = (
   level: "info" | "error" = "info",
 ) => console[level](JSON.stringify(event));
 
-const getErrorCategory = (statusCode: number) => {
+const isClearlyInvalidSubscription = (statusCode: number, error: unknown) => {
+  if (statusCode !== 400 || typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const pushError = error as { body?: unknown; message?: unknown };
+  const safeInspectionText = [pushError.body, pushError.message]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "invalidregistration",
+    "not a valid fcm registration token",
+    "invalid subscription",
+    "subscription is invalid",
+    "invalid endpoint",
+  ].some((marker) => safeInspectionText.includes(marker));
+};
+
+const getErrorCategory = (statusCode: number, invalidSubscription = false) => {
+  if (invalidSubscription) return "subscription_invalid";
   if (statusCode === 400) return "invalid_subscription_or_payload";
   if (statusCode === 401 || statusCode === 403) return "vapid_authentication";
   if (statusCode === 404 || statusCode === 410) return "subscription_expired";
@@ -168,16 +189,29 @@ Deno.serve(async (request) => {
             notification,
             { TTL: 300, timeout: 10_000 },
           );
-          return { sent: true, expired: false, removed: false };
+          return {
+            sent: true,
+            expired: false,
+            invalidSubscription: false,
+            removed: false,
+          };
         } catch (error) {
           const statusCode = Number(
             (error as { statusCode?: number }).statusCode ?? 0,
           );
           const expired = statusCode === 404 || statusCode === 410;
-          const errorCategory = getErrorCategory(statusCode);
+          const invalidSubscription = isClearlyInvalidSubscription(
+            statusCode,
+            error,
+          );
+          const shouldRemove = expired || invalidSubscription;
+          const errorCategory = getErrorCategory(
+            statusCode,
+            invalidSubscription,
+          );
           let removed = false;
 
-          if (expired) {
+          if (shouldRemove) {
             const { error: deleteError } = await supabase
               .from("push_subscriptions")
               .delete()
@@ -191,7 +225,9 @@ Deno.serve(async (request) => {
                 appointment_id: appointmentId,
                 store_id: storeId,
                 http_status: statusCode,
-                error_category: "expired_subscription_cleanup_failed",
+                error_category: invalidSubscription
+                  ? "invalid_subscription_cleanup_failed"
+                  : "expired_subscription_cleanup_failed",
               }, "error");
             }
           }
@@ -203,7 +239,7 @@ Deno.serve(async (request) => {
             http_status: statusCode || null,
             error_category: errorCategory,
           }, "error");
-          return { sent: false, expired, removed };
+          return { sent: false, expired, invalidSubscription, removed };
         }
       }),
     );
@@ -218,7 +254,12 @@ Deno.serve(async (request) => {
         http_status: null,
         error_category: "unexpected_send_rejection",
       }, "error");
-      return { sent: false, expired: false, removed: false };
+      return {
+        sent: false,
+        expired: false,
+        invalidSubscription: false,
+        removed: false,
+      };
     });
 
     const summary = {
@@ -228,7 +269,11 @@ Deno.serve(async (request) => {
       subscriptions_found: reports.length,
       sent_successfully: reports.filter((item) => item.sent).length,
       failed: reports.filter((item) => !item.sent).length,
-      expired_removed: reports.filter((item) => item.removed).length,
+      expired_removed: reports.filter((item) => item.removed && item.expired)
+        .length,
+      invalid_removed: reports.filter(
+        (item) => item.removed && item.invalidSubscription,
+      ).length,
     };
     logEvent(summary);
 
@@ -236,7 +281,7 @@ Deno.serve(async (request) => {
       subscriptions: summary.subscriptions_found,
       sent: summary.sent_successfully,
       failed: summary.failed,
-      removed: summary.expired_removed,
+      removed: summary.expired_removed + summary.invalid_removed,
     });
   } catch (error) {
     logEvent({

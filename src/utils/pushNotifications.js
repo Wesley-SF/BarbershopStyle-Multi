@@ -62,10 +62,50 @@ export async function createAdminPushSubscription(publicVapidKey) {
   }
   const registration = await navigator.serviceWorker.ready;
   const existingSubscription = await registration.pushManager.getSubscription();
-  return existingSubscription ?? registration.pushManager.subscribe({
+
+  if (existingSubscription) {
+    throw new Error("A assinatura anterior precisa ser removida antes da ativação.");
+  }
+
+  return registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(publicVapidKey),
   });
+}
+
+async function removeAdminPushSubscriptionRecord(subscription, userId, storeId) {
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("endpoint", subscription.endpoint)
+    .eq("user_id", userId)
+    .eq("store_id", storeId)
+    .eq("role", "admin");
+
+  if (error) throw error;
+}
+
+export async function replaceAdminPushSubscription(
+  publicVapidKey,
+  userId,
+  storeId,
+) {
+  if (!isValidVapidPublicKey(publicVapidKey)) {
+    throw new Error("A chave pública VAPID não foi configurada corretamente.");
+  }
+
+  const existingSubscription = await getCurrentPushSubscription();
+
+  if (existingSubscription) {
+    await removeAdminPushSubscriptionRecord(
+      existingSubscription,
+      userId,
+      storeId,
+    );
+    await existingSubscription.unsubscribe();
+  }
+
+  return createAdminPushSubscription(publicVapidKey);
 }
 
 export async function saveAdminPushSubscription(subscription, userId, storeId) {
