@@ -125,6 +125,22 @@ function buildWhatsAppMessage(appointment, storeName) {
   return "";
 }
 
+function formatWhatsAppConfirmationSentAt(value) {
+  const sentAt = new Date(value);
+
+  if (Number.isNaN(sentAt.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(sentAt);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return `${getPart("day")}/${getPart("month")} às ${getPart("hour")}:${getPart("minute")}`;
+}
+
 function Admin() {
   const { profile, storeId } = useOutletContext();
   const [storeBranding, setStoreBranding] = useState(null);
@@ -165,6 +181,8 @@ function Admin() {
     appointmentId: null,
     message: "",
   });
+  const [updatingWhatsAppAppointmentId, setUpdatingWhatsAppAppointmentId] =
+    useState(null);
 
   const highlightTimersRef = useRef(new Set());
   const messageTimerRef = useRef(null);
@@ -353,7 +371,7 @@ function Admin() {
         const { data, error } = await supabase
           .from("appointments")
           .select(
-            "id, customer_name, customer_phone, service, appointment_date, appointment_time, status, created_at, duration_minutes",
+            "id, customer_name, customer_phone, service, appointment_date, appointment_time, status, created_at, duration_minutes, whatsapp_confirmation_sent_at",
           )
           .eq("store_id", storeId)
           .order("appointment_date", { ascending: true })
@@ -813,6 +831,75 @@ function Admin() {
     );
   };
 
+  const handleSendWhatsAppConfirmation = async (appointment) => {
+    if (updatingWhatsAppAppointmentId !== null) return;
+
+    if (!isValidBrazilianWhatsAppPhone(appointment.customer_phone)) {
+      setWhatsAppError({
+        appointmentId: appointment.id,
+        message: "Telefone inválido para WhatsApp.",
+      });
+      return;
+    }
+
+    const message = buildWhatsAppMessage(
+      appointment,
+      storeBranding?.display_name ?? "barbearia",
+    );
+
+    if (!message) return;
+
+    setWhatsAppError({ appointmentId: null, message: "" });
+    setUpdatingWhatsAppAppointmentId(appointment.id);
+
+    window.open(
+      createWhatsAppUrl(appointment.customer_phone, message),
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    try {
+      const sentAt = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("appointments")
+        .update({ whatsapp_confirmation_sent_at: sentAt })
+        .eq("id", appointment.id)
+        .eq("store_id", storeId)
+        .eq("status", APPOINTMENT_STATUS.CONFIRMED)
+        .select("id, whatsapp_confirmation_sent_at")
+        .maybeSingle();
+
+      if (error || !data) {
+        console.error("Não foi possível registrar a confirmação pelo WhatsApp.");
+        setWhatsAppError({
+          appointmentId: appointment.id,
+          message: "Não foi possível registrar o envio. Tente novamente.",
+        });
+        return;
+      }
+
+      setAppointments((currentAppointments) =>
+        currentAppointments.map((currentAppointment) =>
+          currentAppointment.id === appointment.id
+            ? {
+                ...currentAppointment,
+                whatsapp_confirmation_sent_at:
+                  data.whatsapp_confirmation_sent_at,
+              }
+            : currentAppointment,
+        ),
+      );
+    } catch {
+      console.error("Erro inesperado ao registrar a confirmação pelo WhatsApp.");
+      setWhatsAppError({
+        appointmentId: appointment.id,
+        message: "Não foi possível registrar o envio. Tente novamente.",
+      });
+    } finally {
+      setUpdatingWhatsAppAppointmentId(null);
+    }
+  };
+
   const handleLogout = async () => {
     if (isSigningOut) {
       return;
@@ -1004,6 +1091,8 @@ function Admin() {
                 currentDateTime,
               );
               const isUpdating = updatingAppointmentId === appointment.id;
+              const isUpdatingWhatsApp =
+                updatingWhatsAppAppointmentId === appointment.id;
               const isHighlighted = highlightedAppointmentIds.includes(
                 appointment.id,
               );
@@ -1078,15 +1167,42 @@ function Admin() {
                             ? "Atendimento em andamento"
                             : "Agendamento confirmado"}
                         </p>
-                        {!isInProgress && (
-                          <button
-                            className="appointment-action appointment-action--whatsapp"
-                            type="button"
-                            onClick={() => handleOpenWhatsApp(appointment)}
-                          >
-                            Enviar confirmação pelo WhatsApp
-                          </button>
-                        )}
+                        {!isInProgress &&
+                          (appointment.whatsapp_confirmation_sent_at ? (
+                            <div className="appointment-whatsapp-sent">
+                              <div>
+                                <strong>Confirmação enviada pelo WhatsApp</strong>
+                                <span>
+                                  Enviada em {formatWhatsAppConfirmationSentAt(
+                                    appointment.whatsapp_confirmation_sent_at,
+                                  )}
+                                </span>
+                              </div>
+                              <button
+                                className="appointment-action appointment-action--whatsapp-resend"
+                                type="button"
+                                disabled={updatingWhatsAppAppointmentId !== null}
+                                onClick={() =>
+                                  handleSendWhatsAppConfirmation(appointment)
+                                }
+                              >
+                                {isUpdatingWhatsApp ? "Registrando..." : "Reenviar"}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="appointment-action appointment-action--whatsapp"
+                              type="button"
+                              disabled={updatingWhatsAppAppointmentId !== null}
+                              onClick={() =>
+                                handleSendWhatsAppConfirmation(appointment)
+                              }
+                            >
+                              {isUpdatingWhatsApp
+                                ? "Registrando envio..."
+                                : "Enviar confirmação pelo WhatsApp"}
+                            </button>
+                          ))}
                         <button
                           className="appointment-action appointment-action--reject appointment-action--cancel"
                           type="button"

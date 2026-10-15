@@ -992,6 +992,44 @@ h1 {
   background: rgba(212, 168, 79, .12);
 }
 
+.appointment-whatsapp-sent {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .8rem 1rem;
+  border: 1px solid rgba(92, 184, 122, .42);
+  border-radius: 12px;
+  color: var(--admin-text);
+  background: rgba(92, 184, 122, .1);
+}
+
+.appointment-whatsapp-sent div {
+  display: grid;
+  gap: .2rem;
+  min-width: 0;
+}
+
+.appointment-whatsapp-sent strong {
+  color: var(--admin-success);
+  font-size: .9rem;
+}
+
+.appointment-whatsapp-sent span {
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.appointment-action--whatsapp-resend {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: .55rem .8rem;
+  border-color: var(--gold);
+  color: var(--gold-light);
+  background: transparent;
+}
+
 .appointment-action--cancel { grid-column: 1 / -1; }
 
 .appointment-whatsapp-error {
@@ -1064,6 +1102,8 @@ h1 {
   .appointment-cards { grid-template-columns: 1fr; }
   .appointment-card-actions { grid-template-columns: 1fr; }
   .appointment-action { min-height: 50px; }
+  .appointment-whatsapp-sent { align-items: stretch; flex-direction: column; }
+  .appointment-action--whatsapp-resend { width: 100%; }
 }
 .landing-shell {
   display: grid;
