@@ -4,7 +4,7 @@ Aplicação React + Vite para agendamentos, painel administrativo e integração
 
 ## Web Push administrativo
 
-A aplicação usa um Service Worker gerado por `vite-plugin-pwa`. O frontend recebe apenas `VITE_VAPID_PUBLIC_KEY`; a chave privada permanece nos secrets da Edge Function.
+A aplicação usa um Service Worker gerado por `vite-plugin-pwa`. O frontend obtém a chave pública VAPID diretamente da Edge Function `send-admin-push`; a chave privada permanece nos secrets da função.
 
 ### 1. Gerar as chaves VAPID
 
@@ -12,13 +12,8 @@ A aplicação usa um Service Worker gerado por `vite-plugin-pwa`. O frontend rec
 npx web-push generate-vapid-keys --json
 ```
 
-Copie a chave pública para `.env.local`:
-
-```env
-VITE_VAPID_PUBLIC_KEY=SUA_CHAVE_PUBLICA
-```
-
-Nunca coloque a chave privada em uma variável `VITE_`.
+Não copie chaves VAPID para variáveis `VITE_`. A chave pública é entregue ao
+frontend pela operação limitada `get_vapid_public_key` da Edge Function.
 
 ### 2. Aplicar o schema versionado
 
@@ -82,15 +77,10 @@ mesmo valor ao Vault e às duas funções.
 
 ### 5. Conferir as chaves VAPID
 
-`VITE_VAPID_PUBLIC_KEY` e `VAPID_PUBLIC_KEY` devem receber a mesma chave
-pública. Uma chave pública válida decodifica para 65 bytes e começa por `0x04`;
-a chave privada decodifica para 32 bytes. O frontend rejeita chaves públicas
-estruturalmente inválidas e a Edge Function registra uma categoria de
-configuração sem registrar nenhuma chave.
-
-Depois de alterar uma variável `VITE_` na Vercel, é necessário gerar um novo
-deploy, pois essas variáveis são incorporadas durante o build. Nunca use
-`VAPID_PRIVATE_KEY` no frontend.
+`VAPID_PUBLIC_KEY` é a única fonte da chave pública. Uma chave pública válida
+decodifica para 65 bytes e começa por `0x04`; a chave privada decodifica para 32
+bytes. O frontend valida a chave e seu fingerprint antes de criar a subscription,
+e a Edge Function registra erros de configuração sem registrar nenhuma chave.
 
 ### 6. Testar
 

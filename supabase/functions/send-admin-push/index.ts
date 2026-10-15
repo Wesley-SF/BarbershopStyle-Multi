@@ -31,6 +31,9 @@ const requiredEnv = (name: string) => {
   return value;
 };
 
+const normalizeVapidPublicKey = (value: string) =>
+  value.trim().replace(/=+$/g, "");
+
 const decodeBase64Url = (value: string) => {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
@@ -67,10 +70,32 @@ const validateVapidConfiguration = (
   }
 };
 
+const getVapidFingerprint = async (publicKey: string) => {
+  const normalizedKey = normalizeVapidPublicKey(publicKey);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalizedKey),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+};
+
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers":
+    "authorization, x-client-info, apikey, content-type",
+  "access-control-allow-methods": "POST, OPTIONS",
+};
+
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: {
+      ...corsHeaders,
+      "content-type": "application/json; charset=utf-8",
+    },
   });
 
 const uuidPattern =
@@ -252,6 +277,10 @@ const getErrorCategory = (statusCode: number, invalidSubscription = false) => {
 };
 
 Deno.serve(async (request) => {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   if (request.method !== "POST") {
     return jsonResponse({ error: "Método não permitido." }, 405);
   }
@@ -260,6 +289,28 @@ Deno.serve(async (request) => {
   let storeId: string | null = null;
 
   try {
+    const payload = await request.json();
+    const isPublicVapidRequest =
+      typeof payload === "object" &&
+      payload !== null &&
+      Object.keys(payload).length === 1 &&
+      payload.action === "get_vapid_public_key";
+
+    if (isPublicVapidRequest) {
+      const publicKey = normalizeVapidPublicKey(
+        requiredEnv("VAPID_PUBLIC_KEY"),
+      );
+
+      if (!isValidVapidKey(publicKey, 65, 4)) {
+        throw new FunctionConfigurationError("vapid_public_key_invalid");
+      }
+
+      return jsonResponse({
+        publicKey,
+        fingerprint: await getVapidFingerprint(publicKey),
+      });
+    }
+
     const webhookSecret = requiredEnv("APPOINTMENTS_WEBHOOK_SECRET");
     const receivedWebhookSecret = request.headers.get("x-webhook-secret");
     if (receivedWebhookSecret !== webhookSecret) {
@@ -273,7 +324,6 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Não autorizado." }, 401);
     }
 
-    const payload = await request.json();
     if (
       payload.type !== "INSERT" ||
       payload.schema !== "public" ||
@@ -307,9 +357,12 @@ Deno.serve(async (request) => {
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
     const vapidSubject = requiredEnv("VAPID_SUBJECT");
-    const vapidPublicKey = requiredEnv("VAPID_PUBLIC_KEY");
+    const vapidPublicKey = normalizeVapidPublicKey(
+      requiredEnv("VAPID_PUBLIC_KEY"),
+    );
     const vapidPrivateKey = requiredEnv("VAPID_PRIVATE_KEY");
     validateVapidConfiguration(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    const vapidFingerprint = await getVapidFingerprint(vapidPublicKey);
     const vapid = {
       subject: vapidSubject,
       publicKey: vapidPublicKey,
@@ -318,7 +371,7 @@ Deno.serve(async (request) => {
 
     const { data: subscriptions, error: subscriptionsError } = await supabase
       .from("push_subscriptions")
-      .select("id, endpoint, p256dh, auth")
+      .select("id, endpoint, p256dh, auth, vapid_key_fingerprint")
       .eq("role", "admin")
       .eq("store_id", storeId);
 
@@ -334,6 +387,38 @@ Deno.serve(async (request) => {
 
     const results = await Promise.allSettled(
       (subscriptions ?? []).map(async (subscription) => {
+        if (subscription.vapid_key_fingerprint !== vapidFingerprint) {
+          const { error: deleteError } = await supabase
+            .from("push_subscriptions")
+            .delete()
+            .eq("id", subscription.id)
+            .eq("store_id", storeId);
+
+          if (deleteError) {
+            logEvent({
+              event: "push_failure",
+              appointment_id: appointmentId,
+              store_id: storeId,
+              http_status: null,
+              error_category: "stale_vapid_cleanup_failed",
+            }, "error");
+          } else {
+            logEvent({
+              event: "stale_vapid_removed",
+              appointment_id: appointmentId,
+              store_id: storeId,
+            });
+          }
+
+          return {
+            sent: false,
+            expired: false,
+            invalidSubscription: false,
+            staleVapid: true,
+            removed: !deleteError,
+          };
+        }
+
         try {
           const pushPayload = await buildPushPayload(
             {
@@ -357,6 +442,7 @@ Deno.serve(async (request) => {
             sent: true,
             expired: false,
             invalidSubscription: false,
+            staleVapid: false,
             removed: false,
           };
         } catch (error) {
@@ -408,7 +494,13 @@ Deno.serve(async (request) => {
             error_category: errorCategory,
             ...providerDiagnostics,
           }, "error");
-          return { sent: false, expired, invalidSubscription, removed };
+          return {
+            sent: false,
+            expired,
+            invalidSubscription,
+            staleVapid: false,
+            removed,
+          };
         }
       }),
     );
@@ -427,6 +519,7 @@ Deno.serve(async (request) => {
         sent: false,
         expired: false,
         invalidSubscription: false,
+        staleVapid: false,
         removed: false,
       };
     });
@@ -435,13 +528,17 @@ Deno.serve(async (request) => {
       event: "push_summary",
       appointment_id: appointmentId,
       store_id: storeId,
+      vapid_fingerprint: vapidFingerprint,
       subscriptions_found: reports.length,
       sent_successfully: reports.filter((item) => item.sent).length,
-      failed: reports.filter((item) => !item.sent).length,
+      failed: reports.filter((item) => !item.sent && !item.staleVapid).length,
       expired_removed: reports.filter((item) => item.removed && item.expired)
         .length,
       invalid_removed: reports.filter(
         (item) => item.removed && item.invalidSubscription,
+      ).length,
+      stale_vapid_removed: reports.filter(
+        (item) => item.removed && item.staleVapid,
       ).length,
     };
     logEvent(summary);
@@ -450,7 +547,8 @@ Deno.serve(async (request) => {
       subscriptions: summary.subscriptions_found,
       sent: summary.sent_successfully,
       failed: summary.failed,
-      removed: summary.expired_removed + summary.invalid_removed,
+      removed: summary.expired_removed + summary.invalid_removed +
+        summary.stale_vapid_removed,
     });
   } catch (error) {
     logEvent({

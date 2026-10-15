@@ -4,15 +4,13 @@ import { getPwaInstallState } from "../utils/pwaInstall";
 import {
   doesPushSubscriptionUseVapidKey,
   getCurrentPushSubscription,
-  isAdminPushSubscriptionSaved,
-  isValidVapidPublicKey,
+  getSavedAdminPushSubscription,
+  getVapidPublicConfiguration,
   isWebPushSupported,
   removeAdminPushSubscription,
   replaceAdminPushSubscription,
   saveAdminPushSubscription,
 } from "../utils/pushNotifications";
-
-const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
 function isIosDevice() {
   return (
@@ -42,19 +40,26 @@ function AdminPushNotifications({ storeId, userId }) {
       return;
     }
 
-    if (!isValidVapidPublicKey(vapidPublicKey)) {
-      setStatus("unconfigured");
-      return;
-    }
+    const vapidConfiguration = await getVapidPublicConfiguration();
 
     const subscription = await getCurrentPushSubscription();
-    const isSaved = await isAdminPushSubscriptionSaved(subscription, userId, storeId);
+    const savedSubscription = await getSavedAdminPushSubscription(
+      subscription,
+      userId,
+      storeId,
+    );
     const usesCurrentVapidKey = doesPushSubscriptionUseVapidKey(
       subscription,
-      vapidPublicKey,
+      vapidConfiguration.publicKey,
     );
+    const usesCurrentFingerprint =
+      savedSubscription?.vapid_key_fingerprint === vapidConfiguration.fingerprint;
     setStatus(
-      isSaved && usesCurrentVapidKey ? "active" : isSaved ? "stale" : "inactive",
+      savedSubscription && usesCurrentVapidKey && usesCurrentFingerprint
+        ? "active"
+        : savedSubscription
+          ? "stale"
+          : "inactive",
     );
   }, [storeId, userId]);
 
@@ -90,6 +95,8 @@ function AdminPushNotifications({ storeId, userId }) {
         throw new Error("A sessão administrativa mudou. Entre novamente no painel.");
       }
 
+      const vapidConfiguration = await getVapidPublicConfiguration();
+
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setStatus(permission === "denied" ? "denied" : "inactive");
@@ -97,14 +104,19 @@ function AdminPushNotifications({ storeId, userId }) {
         return;
       }
 
-      const subscription = await replaceAdminPushSubscription(
-        vapidPublicKey,
+      const { subscription, fingerprint } = await replaceAdminPushSubscription(
+        vapidConfiguration,
         userId,
         storeId,
       );
       createdSubscription = subscription;
 
-      await saveAdminPushSubscription(subscription, userId, storeId);
+      await saveAdminPushSubscription(
+        subscription,
+        userId,
+        storeId,
+        fingerprint,
+      );
       setStatus("active");
       setFeedback("Notificações ativadas neste aparelho.");
     } catch (error) {
