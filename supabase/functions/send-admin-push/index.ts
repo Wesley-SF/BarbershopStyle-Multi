@@ -101,6 +101,18 @@ const jsonResponse = (body: unknown, status = 200) =>
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const limitedText = (value: unknown, maximumLength: number) => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "Não informado";
+  const characters = Array.from(normalized);
+  return characters.length > maximumLength
+    ? `${characters.slice(0, maximumLength - 1).join("")}…`
+    : normalized;
+};
+
+const formatAppointmentTime = (value: unknown) =>
+  limitedText(value, 8).slice(0, 5);
+
 const logEvent = (
   event: Record<string, unknown>,
   level: "info" | "error" = "info",
@@ -377,9 +389,12 @@ Deno.serve(async (request) => {
 
     if (subscriptionsError) throw subscriptionsError;
 
+    const customerName = limitedText(appointment.customer_name, 80);
+    const appointmentTime = formatAppointmentTime(appointment.appointment_time);
+    const services = limitedText(appointment.service, 160);
     const notification = JSON.stringify({
       title: "Novo agendamento",
-      body: "Novo agendamento recebido. Abra o painel para ver os detalhes.",
+      body: `${customerName}\n${appointmentTime} • ${services}`,
       url: "/admin",
       tag: `appointment-${appointmentId}`,
       appointment_id: appointmentId,
