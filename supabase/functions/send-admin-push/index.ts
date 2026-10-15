@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import webpush from "npm:web-push@3.6.7";
+import { buildPushPayload } from "npm:@block65/webcrypto-web-push@2.0.0";
 
 class FunctionConfigurationError extends Error {
   category: string;
@@ -7,6 +7,17 @@ class FunctionConfigurationError extends Error {
   constructor(category: string) {
     super(category);
     this.category = category;
+  }
+}
+
+class PushServiceError extends Error {
+  statusCode: number;
+  body: string;
+
+  constructor(statusCode: number, body: string) {
+    super(`Push service respondeu com HTTP ${statusCode}.`);
+    this.statusCode = statusCode;
+    this.body = body;
   }
 }
 
@@ -299,7 +310,11 @@ Deno.serve(async (request) => {
     const vapidPublicKey = requiredEnv("VAPID_PUBLIC_KEY");
     const vapidPrivateKey = requiredEnv("VAPID_PRIVATE_KEY");
     validateVapidConfiguration(vapidSubject, vapidPublicKey, vapidPrivateKey);
-    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    const vapid = {
+      subject: vapidSubject,
+      publicKey: vapidPublicKey,
+      privateKey: vapidPrivateKey,
+    };
 
     const { data: subscriptions, error: subscriptionsError } = await supabase
       .from("push_subscriptions")
@@ -320,14 +335,24 @@ Deno.serve(async (request) => {
     const results = await Promise.allSettled(
       (subscriptions ?? []).map(async (subscription) => {
         try {
-          await webpush.sendNotification(
+          const pushPayload = await buildPushPayload(
+            {
+              data: notification,
+              options: { ttl: 300 },
+            },
             {
               endpoint: subscription.endpoint,
+              expirationTime: null,
               keys: { p256dh: subscription.p256dh, auth: subscription.auth },
             },
-            notification,
-            { TTL: 300, timeout: 10_000 },
+            vapid,
           );
+          const response = await fetch(subscription.endpoint, pushPayload);
+
+          if (!response.ok) {
+            throw new PushServiceError(response.status, await response.text());
+          }
+
           return {
             sent: true,
             expired: false,
